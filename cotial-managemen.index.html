@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>魔法のコーティアル 業務管理システム</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;background:#F5F4F0;color:#1a1a1a;font-size:13px}
+.app{display:flex;height:100vh;min-height:640px}
+.sidebar{width:210px;background:#fff;border-right:0.5px solid #e0ddd6;display:flex;flex-direction:column;flex-shrink:0}
+.logo{padding:18px 16px 14px;border-bottom:0.5px solid #e0ddd6}
+.logo-main{font-size:13px;font-weight:600;color:#1a1a1a;letter-spacing:0.02em}
+.logo-sub{font-size:10px;color:#888;margin-top:3px}
+.nav-section{padding:10px 0;flex:1}
+.nav-label{font-size:9px;color:#bbb;padding:0 14px 5px;text-transform:uppercase;letter-spacing:0.08em}
+.nav-item{display:flex;align-items:center;gap:9px;padding:8px 14px;font-size:12px;cursor:pointer;color:#666;border-left:2px solid transparent;transition:all 0.12s}
+.nav-item:hover{background:#f5f4f0;color:#1a1a1a}
+.nav-item.active{background:#eef4fb;color:#185FA5;border-left-color:#185FA5;font-weight:500}
+.ni{width:14px;height:14px;flex-shrink:0}
+.save-status{padding:10px 14px;font-size:10px;color:#999;border-top:0.5px solid #e0ddd6;display:flex;align-items:center;gap:6px}
+.save-dot{width:7px;height:7px;border-radius:50%;background:#639922;flex-shrink:0;transition:background 0.3s}
+.save-dot.saving{background:#BA7517;animation:pulse 0.8s infinite}
+.save-dot.error{background:#A32D2D}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.main{flex:1;overflow:auto;display:flex;flex-direction:column}
+.topbar{background:#fff;border-bottom:0.5px solid #e0ddd6;padding:11px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.topbar h1{font-size:14px;font-weight:500}
+.btn{padding:5px 12px;font-size:11px;border-radius:6px;border:0.5px solid #ccc;background:transparent;cursor:pointer;color:#333;font-family:inherit;transition:all 0.12s}
+.btn:hover{background:#f5f4f0}
+.btn-primary{background:#185FA5;color:#fff;border-color:#185FA5}.btn-primary:hover{background:#0C447C}
+.btn-green{background:#3B6D11;color:#fff;border-color:#3B6D11}.btn-green:hover{background:#2C5209}
+.btn-sm{padding:3px 9px;font-size:10px}
+.content{padding:16px 20px;flex:1}
+.page{display:none}.page.active{display:block}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.mc{background:#fff;border-radius:8px;padding:12px 14px;border:0.5px solid #e0ddd6}
+.ml{font-size:10px;color:#999;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em}
+.mv{font-size:20px;font-weight:500}.ms{font-size:10px;color:#999;margin-top:2px}
+.card{background:#fff;border:0.5px solid #e0ddd6;border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.card-title{font-size:12px;font-weight:500}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{text-align:left;padding:6px 8px;color:#999;font-weight:400;border-bottom:0.5px solid #e0ddd6;font-size:10px;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap}
+td{padding:7px 8px;border-bottom:0.5px solid #f0ede8;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#faf9f7}
+.badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;white-space:nowrap}
+.bs{background:#EAF3DE;color:#3B6D11}.bw{background:#FAEEDA;color:#854F0B}.bd{background:#FCEBEB;color:#A32D2D}
+.bi{background:#E6F1FB;color:#185FA5}.bg{background:#F1EFE8;color:#5F5E5A}.bp{background:#FBEAF0;color:#993556}
+.bv{background:#EEE8FB;color:#5B4EA8}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.flavor-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:12px;border:0.5px solid #e0ddd6;width:640px;max-width:96vw;padding:20px;max-height:92vh;overflow:auto}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.modal-title{font-size:13px;font-weight:500}
+.close-btn{cursor:pointer;font-size:18px;line-height:1;background:none;border:none;color:#999}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fl{font-size:10px;color:#999}
+input,select,textarea{font-family:inherit;font-size:12px;border:0.5px solid #ccc;border-radius:6px;padding:6px 9px;background:#fff;color:#1a1a1a;width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-shadow:0 0 0 2px rgba(24,95,165,0.12)}
+.filters{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+.filter-select{font-size:11px;padding:5px 8px;width:auto}
+.tab-nav{display:flex;border-bottom:0.5px solid #e0ddd6;margin-bottom:14px}
+.tab{padding:7px 12px;font-size:11px;cursor:pointer;border-bottom:2px solid transparent;color:#999;margin-bottom:-0.5px}
+.tab.active{color:#185FA5;border-bottom-color:#185FA5;font-weight:500}
+.progress{height:5px;background:#f0ede8;border-radius:3px;overflow:hidden;min-width:60px}
+.progress-bar{height:100%;border-radius:3px}
+.expiry-warn{color:#854F0B}.expiry-ok{color:#999}.expiry-past{color:#A32D2D}
+.bar-chart{display:flex;align-items:flex-end;gap:4px;height:120px;padding-bottom:20px;position:relative}
+.bar-col{display:flex;flex-direction:column;align-items:center;flex:1;gap:2px;position:relative}
+.bar-body{width:100%;border-radius:3px 3px 0 0;min-height:2px}
+.bar-xlabel{font-size:8px;color:#999;white-space:nowrap;position:absolute;bottom:-18px}
+.bar-val{font-size:9px;color:#999;margin-bottom:2px}
+.detail-grid{display:grid;grid-template-columns:130px 1fr;gap:6px 12px;font-size:12px;margin-bottom:14px}
+.di-label{color:#999;font-size:11px;padding-top:1px}
+.rank-num{font-size:13px;font-weight:600;color:#999}
+.rank-1{color:#C9930B}.rank-2{color:#7D8A8E}.rank-3{color:#9E6B3F}
+.search-input{font-size:11px;padding:5px 9px;width:200px}
+.empty-state{text-align:center;color:#999;padding:24px;font-size:12px}
+.loading-overlay{position:fixed;inset:0;background:#fff;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+.spinner{width:28px;height:28px;border:2px solid #e0ddd6;border-top-color:#185FA5;border-radius:50%;animation:spin 0.7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;bottom:24px;right:24px;background:#185FA5;color:#fff;padding:10px 16px;border-radius:8px;font-size:12px;z-index:300;opacity:0;transition:opacity 0.3s;pointer-events:none;max-width:300px}
+.toast.show{opacity:1}
+.export-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.export-card{border:0.5px solid #ccc;border-radius:8px;padding:14px;cursor:pointer;transition:all 0.15s;text-align:center}
+.export-card:hover{border-color:#185FA5;background:#eef4fb}
+.how-to{background:#f5f4f0;border-radius:8px;padding:12px;margin-top:14px;font-size:11px;line-height:1.8;color:#666}
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+  <div style="font-size:12px;color:#999" id="loading-msg">Supabaseに接続中...</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<div class="app" id="main-app" style="display:none">
+<nav class="sidebar">
+  <div class="logo">
+    <div class="logo-main">魔法のコーティアル</div>
+    <div class="logo-sub">受注・在庫管理システム</div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">メニュー</div>
+    <div class="nav-item active" onclick="showPage('dashboard',this)">
+      <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="1" width="5" height="5" rx="1"/><rect x="8" y="1" width="5" height="5" rx="1"/><rect x="1" y="8" width="5" height="5" rx="1"/><rect x="8" y="8" width="5" height="5" rx="1"/></svg>ダッシュボード
+    </div>
+    <div class="nav-item" onclick="showPage('customers',this)">
+      <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><circle cx="7" cy="4.5" r="2.5"/><path d="M2 12c0-2.76 2.24-5 5-5s5 2.24 5 5H2z"/></svg>得意先管理
+    </div>
+    <div class="nav-item" onclick="showPage('products',this)">
+      <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M7 1L1 4v1l6 2.5L13 5V4L7 1zM2 6.5v4.5l5 2 5-2V6.5L7 9 2 6.5z"/></svg>製品マスタ
+    </div>
+    <div class="nav-item" onclick="showPage('inventory',this)">
+      <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="3" width="12" height="2" rx="0.5"/><rect x="1" y="7" width="12" height="2" rx="0.5"/><rect x="1" y="11" width="12" height="2" rx="0.5"/></svg>在庫管理
+    </div>
+    <div class="nav-item" onclick="showPage('orders',this)">
+      <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M2 1h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zm1 3v7h8V4H3zm1 2h6v1H4V6zm0 2h4v1H4V8z"/></svg>受注管理
+    </div>
+    <div class="nav-item" onclick="showPage('sales',this)">
+      <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M1 11L4 6l2.5 2.5L9 4l4 5H1z"/></svg>売上管理
+    </div>
+  </div>
+  <div class="save-status">
+    <div class="save-dot" id="save-dot"></div>
+    <span id="save-label">接続中...</span>
+  </div>
+</nav>
+
+<div class="main">
+  <div class="topbar">
+    <h1 id="page-title">ダッシュボード</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-green" onclick="openModal('csv-export')">📥 CSVエクスポート</button>
+      <span style="font-size:10px;color:#999" id="today-label"></span>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="metrics">
+        <div class="mc"><div class="ml">総在庫数</div><div class="mv" id="d-stock">-</div><div class="ms">全SKU合計</div></div>
+        <div class="mc"><div class="ml">在庫切れSKU</div><div class="mv" style="color:#A32D2D" id="d-zero">-</div><div class="ms">要注意</div></div>
+        <div class="mc"><div class="ml">累計売上</div><div class="mv" id="d-sales">-</div><div class="ms">受注ベース</div></div>
+        <div class="mc"><div class="ml">得意先数</div><div class="mv" id="d-customers">-</div><div class="ms">登録件数</div></div>
+      </div>
+      <div class="two-col">
+        <div class="card"><div class="card-header"><span class="card-title">フレーバー別在庫</span></div><div id="flavor-chart"></div></div>
+        <div class="card"><div class="card-header"><span class="card-title">業種別得意先数</span></div><div id="industry-chart"></div></div>
+      </div>
+      <div class="card"><div class="card-header"><span class="card-title">注意が必要な商品</span></div><div id="alert-list"></div></div>
+    </div>
+
+    <!-- CUSTOMERS -->
+    <div class="page" id="page-customers">
+      <div class="filters">
+        <input class="search-input" id="cust-search" placeholder="🔍 得意先名・担当者で検索..." oninput="renderCustomers()">
+        <select class="filter-select" id="f-cust-industry" onchange="renderCustomers()"><option value="">業種：全て</option></select>
+        <select class="filter-select" id="f-cust-type" onchange="renderCustomers()"><option value="">取扱形態：全て</option></select>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn btn-green" onclick="exportCSV('customers')">📥 CSV</button>
+          <button class="btn btn-primary" onclick="openNewCustomerModal()">＋ 得意先追加</button>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-header"><span class="card-title" id="cust-count-label">得意先一覧</span></div>
+        <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>No.</th><th>初回受注日</th><th>得意先名</th><th>担当者</th><th>業種</th><th>取扱形態</th><th>飲料価格</th><th>物販価格</th><th>ロット</th><th>納品方法</th><th>連絡手段</th><th>累計売上</th><th></th></tr></thead>
+          <tbody id="customer-table"></tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRODUCTS -->
+    <div class="page" id="page-products">
+      <div class="filters">
+        <select class="filter-select" onchange="filterProducts()" id="f-flavor"><option value="">フレーバー：全て</option></select>
+        <select class="filter-select" onchange="filterProducts()" id="f-vol"><option value="">容量：全て</option></select>
+        <select class="filter-select" onchange="filterProducts()" id="f-pouch"><option value="">パウチ：全て</option></select>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn btn-green" onclick="exportCSV('products')">📥 CSV</button>
+          <button class="btn btn-primary" onclick="openModal('new-product')">＋ 商品追加</button>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-header"><span class="card-title" id="products-count">全製品</span></div>
+        <table><thead><tr><th>商品ID</th><th>フレーバー</th><th>パウチ</th><th>製造場所</th><th>容量</th><th>賞味期限</th><th>現在庫</th><th>定価</th><th>状態</th></tr></thead>
+        <tbody id="product-table"></tbody></table>
+      </div>
+    </div>
+
+    <!-- INVENTORY -->
+    <div class="page" id="page-inventory">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">在庫一覧</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-green" onclick="exportCSV('inventory')">📥 CSV</button>
+            <button class="btn btn-primary" onclick="openAdjustModal()">在庫調整</button>
+          </div>
+        </div>
+        <table><thead><tr><th>商品ID</th><th>フレーバー</th><th>容量</th><th>パウチ</th><th>製造場所</th><th>現在庫</th><th>賞味期限</th><th>状況</th></tr></thead>
+        <tbody id="inv-table"></tbody></table>
+      </div>
+    </div>
+
+    <!-- ORDERS -->
+    <div class="page" id="page-orders">
+      <div class="filters">
+        <select class="filter-select" id="ord-cust-filter" onchange="renderOrders()"><option value="">得意先：全て</option></select>
+        <select class="filter-select" id="ord-month-filter" onchange="renderOrders()"><option value="">月：全て</option></select>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn btn-green" onclick="exportCSV('orders')">📥 CSV</button>
+          <button class="btn btn-primary" onclick="openNewOrderModal()">＋ 新規受注</button>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-header"><span class="card-title" id="ord-count-label">受注一覧</span></div>
+        <table><thead><tr><th>受注番号</th><th>得意先</th><th>商品</th><th>数量</th><th>単価</th><th>金額</th><th>ステータス</th><th>受注日</th></tr></thead>
+        <tbody id="order-table"></tbody></table>
+      </div>
+    </div>
+
+    <!-- SALES -->
+    <div class="page" id="page-sales">
+      <div class="tab-nav" style="justify-content:space-between;align-items:center">
+        <div style="display:flex">
+          <div class="tab active" onclick="switchSalesTab('monthly',this)">月別実績</div>
+          <div class="tab" onclick="switchSalesTab('customer',this)">得意先別実績</div>
+          <div class="tab" onclick="switchSalesTab('product',this)">商品別実績</div>
+        </div>
+        <button class="btn btn-green btn-sm" onclick="exportCSV('sales')" style="margin-bottom:2px">📥 売上CSV</button>
+      </div>
+      <div id="sales-tab-monthly">
+        <div class="metrics">
+          <div class="mc"><div class="ml">累計売上</div><div class="mv" id="sm-total">-</div></div>
+          <div class="mc"><div class="ml">受注件数</div><div class="mv" id="sm-count">-</div></div>
+          <div class="mc"><div class="ml">平均受注単価</div><div class="mv" id="sm-avg">-</div></div>
+          <div class="mc"><div class="ml">最高月</div><div class="mv" id="sm-top" style="font-size:13px">-</div></div>
+        </div>
+        <div class="card"><div class="card-header"><span class="card-title">月別売上推移</span></div><div class="bar-chart" id="monthly-bar-chart"></div></div>
+        <div class="card"><div class="card-header"><span class="card-title">月別明細</span></div>
+          <table><thead><tr><th>年月</th><th>受注件数</th><th>売上金額</th><th>前月比</th></tr></thead><tbody id="monthly-table"></tbody></table>
+        </div>
+      </div>
+      <div id="sales-tab-customer" style="display:none">
+        <div class="card"><div class="card-header"><span class="card-title">得意先別売上ランキング</span></div>
+          <table><thead><tr><th>順位</th><th>得意先名</th><th>受注件数</th><th>合計数量</th><th>売上金額</th><th>構成比</th><th></th></tr></thead><tbody id="sales-customer-table"></tbody></table>
+        </div>
+        <div class="two-col">
+          <div class="card"><div class="card-header"><span class="card-title">得意先別売上グラフ</span></div><div class="bar-chart" id="customer-bar-chart"></div></div>
+          <div class="card"><div class="card-header"><span class="card-title">得意先別月次推移</span></div>
+            <select class="filter-select" id="detail-customer-select" onchange="renderCustomerMonthly()" style="width:100%;margin-bottom:10px"><option value="">得意先を選択...</option></select>
+            <div id="customer-monthly-detail"></div>
+          </div>
+        </div>
+      </div>
+      <div id="sales-tab-product" style="display:none">
+        <div class="two-col">
+          <div class="card"><div class="card-header"><span class="card-title">フレーバー別売上</span></div>
+            <table><thead><tr><th>フレーバー</th><th>数量</th><th>売上</th><th>構成比</th></tr></thead><tbody id="s-flavor"></tbody></table>
+          </div>
+          <div class="card"><div class="card-header"><span class="card-title">容量別売上</span></div>
+            <table><thead><tr><th>容量</th><th>数量</th><th>売上</th><th>構成比</th></tr></thead><tbody id="s-vol"></tbody></table>
+          </div>
+        </div>
+        <div class="card"><div class="card-header"><span class="card-title">商品別売上ランキング</span></div>
+          <table><thead><tr><th>順位</th><th>商品</th><th>容量</th><th>パウチ</th><th>数量</th><th>売上</th><th>構成比</th></tr></thead><tbody id="s-product"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-overlay" id="modal-customer-detail">
+  <div class="modal" style="width:720px">
+    <div class="modal-header"><span class="modal-title" id="cd-title">得意先詳細</span><button class="close-btn" onclick="closeModal('customer-detail')">×</button></div>
+    <div id="cd-body"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-new-customer">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title" id="customer-modal-title">得意先追加</span><button class="close-btn" onclick="closeModal('new-customer')">×</button></div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="fg" style="grid-column:1/-1"><label class="fl">得意先正式名称 *</label><input type="text" id="nc-name" placeholder="株式会社〇〇"></div>
+      <div class="fg"><label class="fl">窓口担当者</label><input type="text" id="nc-contact" placeholder="山田 太郎様"></div>
+      <div class="fg"><label class="fl">初回受注日</label><input type="text" id="nc-firstorder" placeholder="例：6年4月"></div>
+      <div class="fg"><label class="fl">業種</label>
+        <select id="nc-industry"><option>小売(食品)</option><option>小売(雑貨)</option><option>飲食</option><option>サロン</option><option>ホテル</option><option>道の駅</option><option>EC</option><option>物販</option><option>その他</option></select></div>
+      <div class="fg"><label class="fl">取扱形態</label>
+        <select id="nc-tradetype"><option>卸飲料・物販</option><option>卸物販</option><option>卸飲料</option><option>委託物販</option><option>EC卸販売</option></select></div>
+      <div class="fg"><label class="fl">飲料卸価格 (円)</label><input type="number" id="nc-price-drink" placeholder="1084"></div>
+      <div class="fg"><label class="fl">物販卸価格 (円)</label><input type="number" id="nc-price-goods" placeholder="1185"></div>
+      <div class="fg"><label class="fl">ロット数</label><input type="text" id="nc-lot" placeholder="20"></div>
+      <div class="fg"><label class="fl">納品方法</label>
+        <select id="nc-delivery"><option>ヤマト便</option><option>直接配送</option><option>自社配送</option></select></div>
+      <div class="fg"><label class="fl">電話番号</label><input type="text" id="nc-tel" placeholder="090-0000-0000"></div>
+      <div class="fg"><label class="fl">メールアドレス</label><input type="email" id="nc-email" placeholder="example@email.com"></div>
+      <div class="fg"><label class="fl">連絡手段</label><input type="text" id="nc-contactmethod" placeholder="LINE / メール 等"></div>
+      <div class="fg" style="grid-column:1/-1"><label class="fl">備考・メモ</label><textarea id="nc-memo" rows="2" placeholder="特記事項など"></textarea></div>
+    </div>
+    <input type="hidden" id="nc-edit-id">
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn" onclick="closeModal('new-customer')">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveCustomer()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-new-product">
+  <div class="modal" style="width:500px">
+    <div class="modal-header"><span class="modal-title">商品追加</span><button class="close-btn" onclick="closeModal('new-product')">×</button></div>
+    <div class="form-grid">
+      <div class="fg"><label class="fl">フレーバー</label><select id="np-flavor"><option>夕凪のマーメイド</option><option>蒼炎のドラゴン</option><option>逆光のドワーフ</option><option>星夜のユニコーン</option></select></div>
+      <div class="fg"><label class="fl">パウチ</label><select id="np-pouch"><option>半透明</option><option>アルミ</option></select></div>
+      <div class="fg"><label class="fl">容量</label><select id="np-vol"><option value="50">50ml</option><option value="220">220ml</option></select></div>
+      <div class="fg"><label class="fl">製造場所</label><select id="np-maker"><option>株式会社下園薩男商店</option><option>たかやま未来センターさとのわ</option></select></div>
+      <div class="fg"><label class="fl">賞味期限</label><input type="date" id="np-exp"></div>
+      <div class="fg"><label class="fl">初期在庫</label><input type="number" id="np-stock" value="0" min="0"></div>
+      <div class="fg"><label class="fl">定価 (円)</label><input type="number" id="np-price" value="530" min="0"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn" onclick="closeModal('new-product')">キャンセル</button>
+      <button class="btn btn-primary" onclick="addProduct()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-adjust">
+  <div class="modal" style="width:500px">
+    <div class="modal-header"><span class="modal-title">在庫調整</span><button class="close-btn" onclick="closeModal('adjust')">×</button></div>
+    <div class="form-grid">
+      <div class="fg" style="grid-column:1/-1"><label class="fl">商品</label><select id="adj-product" onchange="updateAdjPreview()"></select></div>
+      <div class="fg"><label class="fl">調整種別</label><select id="adj-type" onchange="updateAdjPreview()"><option value="add">入庫（加算）</option><option value="sub">出庫（減算）</option><option value="set">棚卸し（指定値）</option></select></div>
+      <div class="fg"><label class="fl">数量</label><input type="number" id="adj-qty" min="0" value="0" oninput="updateAdjPreview()"></div>
+      <div class="fg" style="grid-column:1/-1"><label class="fl">備考</label><input type="text" id="adj-note" placeholder="理由・メモ"></div>
+    </div>
+    <div id="adj-preview" style="font-size:11px;color:#999;margin-bottom:12px;padding:8px;background:#f5f4f0;border-radius:6px"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn" onclick="closeModal('adjust')">キャンセル</button>
+      <button class="btn btn-primary" onclick="doAdjust()">調整する</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-new-order">
+  <div class="modal" style="width:500px">
+    <div class="modal-header"><span class="modal-title">新規受注登録</span><button class="close-btn" onclick="closeModal('new-order')">×</button></div>
+    <div class="form-grid">
+      <div class="fg" style="grid-column:1/-1"><label class="fl">得意先 *</label><select id="no-customer"><option value="">選択してください</option></select></div>
+      <div class="fg"><label class="fl">受注日</label><input type="date" id="no-date"></div>
+      <div class="fg"><label class="fl">商品（在庫あり）</label><select id="no-product" onchange="onOrderProductChange()"></select></div>
+      <div class="fg"><label class="fl">数量</label><input type="number" id="no-qty" min="1" value="1"></div>
+      <div class="fg"><label class="fl">単価 (円)</label><input type="number" id="no-price" min="0" value="530"></div>
+    </div>
+    <div id="no-info" style="font-size:11px;color:#999;margin-bottom:12px;padding:8px;background:#f5f4f0;border-radius:6px"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn" onclick="closeModal('new-order')">キャンセル</button>
+      <button class="btn btn-primary" onclick="addOrder()">受注登録</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-csv-export">
+  <div class="modal" style="width:500px">
+    <div class="modal-header"><span class="modal-title">📥 CSVエクスポート</span><button class="close-btn" onclick="closeModal('csv-export')">×</button></div>
+    <p style="font-size:11px;color:#999;margin-bottom:14px">Googleスプレッドシートへのインポートに対応したCSVをダウンロードします。</p>
+    <div class="export-grid">
+      <div class="export-card" onclick="exportCSV('customers');closeModal('csv-export')"><div style="font-size:20px;margin-bottom:6px">🏢</div><div style="font-size:12px;font-weight:500;margin-bottom:4px">得意先データ</div><div style="font-size:10px;color:#999">全得意先の情報・価格・連絡先</div></div>
+      <div class="export-card" onclick="exportCSV('orders');closeModal('csv-export')"><div style="font-size:20px;margin-bottom:6px">📋</div><div style="font-size:12px;font-weight:500;margin-bottom:4px">受注データ</div><div style="font-size:10px;color:#999">受注番号・得意先・商品・金額</div></div>
+      <div class="export-card" onclick="exportCSV('inventory');closeModal('csv-export')"><div style="font-size:20px;margin-bottom:6px">📦</div><div style="font-size:12px;font-weight:500;margin-bottom:4px">在庫データ</div><div style="font-size:10px;color:#999">商品・在庫数・賞味期限</div></div>
+      <div class="export-card" onclick="exportCSV('sales');closeModal('csv-export')"><div style="font-size:20px;margin-bottom:6px">📊</div><div style="font-size:12px;font-weight:500;margin-bottom:4px">売上明細</div><div style="font-size:10px;color:#999">全売上明細（月・得意先付き）</div></div>
+      <div class="export-card" onclick="exportCSV('all');closeModal('csv-export')" style="grid-column:1/-1;border-color:#185FA5;background:#eef4fb"><div style="font-size:20px;margin-bottom:6px">🗂️</div><div style="font-size:12px;font-weight:500;margin-bottom:4px">全データ一括ダウンロード</div></div>
+    </div>
+    <div class="how-to"><strong>📌 Googleスプレッドシートへのインポート手順</strong><br>① CSVをダウンロード → ② スプレッドシートを開く → ③「ファイル」→「インポート」→「アップロード」→ ④ CSVを選択して「データをインポート」</div>
+  </div>
+</div>
+
+<script>
+// ===== SUPABASE設定 =====
+const SUPABASE_URL = 'https://cijmjxxojojbdfnovooq.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_cIEcSSTJc_g30CMqNe6CSA_Dy1fxnG8';
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ===== 定数 =====
+const FLAVOR_COLOR={'夕凪のマーメイド':'#D4537E','蒼炎のドラゴン':'#378ADD','逆光のドワーフ':'#BA7517','星夜のユニコーン':'#7F77DD','トライアルギフトセット':'#1D9E75'};
+const INDUSTRY_COLOR={'小売(食品)':'#3B6D11','小売(雑貨)':'#185FA5','飲食':'#854F0B','サロン':'#993556','ホテル':'#5B4EA8','道の駅':'#1D9E75','EC':'#378ADD','物販':'#7D8A8E'};
+
+// ===== 初期得意先データ =====
+const INITIAL_CUSTOMERS=[
+  {id:'C001',no:1,first_order:'5年1月',name:'草木堂野菜店',contact:'甲田様',industry:'小売(食品)',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'10',delivery:'直接配送',tel:'',email:'kouda@aglee.jp',contact_method:'LINE',memo:''},
+  {id:'C002',no:2,first_order:'5年1月',name:'羊のルッカ',contact:'宮沢様',industry:'サロン',trade_type:'委託物販',price_drink:null,price_goods:1106,lot:'10',delivery:'ヤマト便',tel:'',email:'1239lucca@gmail.com',contact_method:'LINE',memo:''},
+  {id:'C003',no:3,first_order:'5年6月',name:'（株）SRK',contact:'関常務様',industry:'飲食',trade_type:'卸飲料・物販',price_drink:1118,price_goods:1147,lot:'20',delivery:'直接配送',tel:'090-2233-5981',email:'seki@tsuruya.net',contact_method:'LINE',memo:''},
+  {id:'C004',no:4,first_order:'5年6月',name:'カエルトープ',contact:'飯塚和子様',industry:'小売(雑貨)',trade_type:'委託物販',price_drink:null,price_goods:1106,lot:'10',delivery:'直接配送',tel:'',email:'iizuka.kazuko@gmail.com',contact_method:'LINE',memo:''},
+  {id:'C005',no:5,first_order:'5年7月',name:'大自然生活館',contact:'長岡様',industry:'小売(食品)',trade_type:'委託物販',price_drink:null,price_goods:1106,lot:'10',delivery:'ヤマト便',tel:'0279-84-6295',email:'daishizen@axel.ocn.ne.jp',contact_method:'メール',memo:''},
+  {id:'C006',no:6,first_order:'5年7月',name:'KPC',contact:'渡辺様',industry:'小売(食品)',trade_type:'卸飲料・物販',price_drink:1078,price_goods:1106,lot:'10',delivery:'直接配送',tel:'',email:'biscoabisko@gmail.com',contact_method:'LINE',memo:''},
+  {id:'C007',no:7,first_order:'5年10月',name:'安斎商店',contact:'安齋様',industry:'小売(食品)',trade_type:'卸飲料・物販',price_drink:1148,price_goods:1179,lot:'20',delivery:'ヤマト便',tel:'0279-88-2556',email:'anzai.m@anzaisake.com',contact_method:'LINE/メール',memo:''},
+  {id:'C008',no:8,first_order:'5年11月',name:'ピュアボーテ',contact:'今井様',industry:'サロン',trade_type:'卸物販',price_drink:null,price_goods:1179,lot:'6',delivery:'ヤマト便',tel:'',email:'pure_beaute@icloud.com',contact_method:'LINE/メール',memo:''},
+  {id:'C009',no:9,first_order:'5年11月',name:'ママとこcafe',contact:'黒澤様',industry:'飲食',trade_type:'卸飲料',price_drink:1148,price_goods:null,lot:'12',delivery:'ヤマト便',tel:'',email:'nntex18641@yahoo.co.jp',contact_method:'LINE/メール',memo:''},
+  {id:'C010',no:10,first_order:'5年11月',name:'mamama cafe',contact:'新井様',industry:'飲食',trade_type:'卸飲料',price_drink:1148,price_goods:null,lot:'20',delivery:'ヤマト便',tel:'',email:'mamamacafe1234@gmail.com',contact_method:'LINE/メール',memo:''},
+  {id:'C011',no:11,first_order:'5年12月',name:'チェント',contact:'梅山様',industry:'飲食',trade_type:'卸飲料',price_drink:1148,price_goods:null,lot:'20',delivery:'ヤマト便',tel:'',email:'info-cento@eurobrezza.co.jp',contact_method:'メール／電話',memo:''},
+  {id:'C012',no:12,first_order:'6年1月',name:'mokki',contact:'園田様',industry:'飲食',trade_type:'卸飲料',price_drink:1148,price_goods:null,lot:'20',delivery:'ヤマト便',tel:'070-2210-5675',email:'t.sonoda@maruyasu-gr.co.jp',contact_method:'メール／電話',memo:''},
+  {id:'C013',no:13,first_order:'6年1月',name:'深野力蔵商店',contact:'深野様',industry:'小売(雑貨)',trade_type:'卸物販',price_drink:null,price_goods:1179,lot:'20',delivery:'ヤマト便',tel:'090-6309-3134',email:'salon.an.market@gmail.com',contact_method:'メール／電話／インスタDM',memo:'初回の飲料は特別価格の998円'},
+  {id:'C014',no:14,first_order:'6年2月',name:'グランピング富士山中湖',contact:'榊田様',industry:'ホテル',trade_type:'卸飲料',price_drink:1084,price_goods:null,lot:'20',delivery:'ヤマト便',tel:'080-9508-1963',email:'privatevillaglamping.yamanakako@gmail.com',contact_method:'メール／電話',memo:'初回の飲料は特別価格の998円'},
+  {id:'C015',no:15,first_order:'6年2月',name:'千明仁泉亭',contact:'千明様',industry:'飲食',trade_type:'卸飲料',price_drink:1084,price_goods:null,lot:'20',delivery:'ヤマト便',tel:'090-3960-4966',email:'kyoko-c@jinsentei.com',contact_method:'LINE',memo:''},
+  {id:'C016',no:16,first_order:'6年2月',name:'ange mignon',contact:'百目鬼様',industry:'飲食',trade_type:'卸飲料・物販',price_drink:null,price_goods:1179,lot:'20',delivery:'ヤマト便',tel:'080-1292-0862',email:'angemignon5569@gmail.com',contact_method:'LINE/メール',memo:''},
+  {id:'C017',no:17,first_order:'6年4月',name:'フードサポート四国',contact:'真鍋様',industry:'小売(食品)',trade_type:'卸物販',price_drink:null,price_goods:1179,lot:'20',delivery:'ヤマト便',tel:'0897-45-2022',email:'fs4-front@yoshikei.gr.jp',contact_method:'メール',memo:''},
+  {id:'C018',no:18,first_order:'6年5月',name:'（株）COCOCAN WA-WA-S',contact:'野澤様',industry:'飲食',trade_type:'卸飲料',price_drink:1084,price_goods:null,lot:'20',delivery:'ヤマト便',tel:'011-375-6588',email:'cococan.nozawa@gmail.com',contact_method:'メール／電話',memo:''},
+  {id:'C019',no:19,first_order:'6年6月',name:'文真堂書店',contact:'吉原様',industry:'小売(雑貨)',trade_type:'委託物販',price_drink:null,price_goods:1185,lot:'20',delivery:'自社配送',tel:'027-370-6166',email:'t-yoshihara@bunshindo.co.jp',contact_method:'メール',memo:'高崎店'},
+  {id:'C020',no:20,first_order:'6年6月',name:'玉原東急リゾート たんばらラベンダーパーク',contact:'松井様',industry:'小売(食品)',trade_type:'卸物販',price_drink:null,price_goods:1106,lot:'20',delivery:'ヤマト便',tel:'0278-23-9311',email:'tomomi.matsui@tokyu-rs.co.jp',contact_method:'メール',memo:''},
+  {id:'C021',no:21,first_order:'6年7月',name:'株式会社KANAYA RESORTS THE KEY HIGHLAND NASU',contact:'浅井様',industry:'ホテル',trade_type:'卸飲料',price_drink:1084,price_goods:null,lot:'20',delivery:'ヤマト便',tel:'0287-77-7000',email:'c.asai@kanaya1931.com',contact_method:'メール',memo:''},
+  {id:'C022',no:22,first_order:'6年8月',name:'たかやま振興公社',contact:'割田様',industry:'道の駅',trade_type:'委託物販',price_drink:null,price_goods:null,lot:'なし',delivery:'自社配送',tel:'',email:'',contact_method:'',memo:'手数料15%'},
+  {id:'C023',no:23,first_order:'6年9月',name:'マギカバザール',contact:'海老原様',industry:'EC',trade_type:'卸物販',price_drink:null,price_goods:1106,lot:'受注注文',delivery:'ヤマト便',tel:'',email:'magica.bazaar@gmail.com',contact_method:'メール',memo:'受注会を開催'},
+  {id:'C024',no:24,first_order:'6年10月',name:'らんらん亭(goooods経由)',contact:'松山様',industry:'小売(雑貨)',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'',delivery:'ヤマト便',tel:'086-241-0704',email:'goooods内',contact_method:'チャット',memo:''},
+  {id:'C025',no:25,first_order:'6年10月',name:'ベーグルカフェソネット',contact:'町田様',industry:'飲食',trade_type:'卸飲料・物販',price_drink:1084,price_goods:1084,lot:'12',delivery:'ヤマト便',tel:'070-7590-1017',email:'goooods内',contact_method:'インスタDM',memo:'初回はgoooods内で購入'},
+  {id:'C026',no:26,first_order:'7年2月',name:'喫茶と雑貨 Melba',contact:'今村様',industry:'飲食',trade_type:'卸飲料・物販',price_drink:1084,price_goods:1106,lot:'20',delivery:'ヤマト便',tel:'090-4882-4905',email:'goooods内',contact_method:'インスタDM',memo:'初回はgoooods内で10P購入'},
+  {id:'C027',no:27,first_order:'7年3月',name:'ひつじをかぞえるまもない。',contact:'井上様',industry:'サロン',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'090-3536-8841',email:'goooods内',contact_method:'',memo:''},
+  {id:'C028',no:28,first_order:'7年3月',name:'noa moco',contact:'斉藤様',industry:'サロン',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'070-1471-6862',email:'goooods内',contact_method:'',memo:''},
+  {id:'C029',no:29,first_order:'7年4月',name:'hair salon oli',contact:'奥森様',industry:'サロン',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'090-7749-8880',email:'goooods内',contact_method:'',memo:''},
+  {id:'C030',no:30,first_order:'7年5月',name:'ミスラベンダー',contact:'竹内様',industry:'小売(雑貨)',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'085-931-3020',email:'オロシー内',contact_method:'',memo:''},
+  {id:'C031',no:31,first_order:'7年5月',name:'花楽の里',contact:'岡橋様',industry:'小売(雑貨)',trade_type:'委託物販',price_drink:null,price_goods:null,lot:'なし',delivery:'',tel:'',email:'',contact_method:'',memo:'手数料15%'},
+  {id:'C032',no:32,first_order:'7年5月',name:'popdcornuts.works',contact:'江川様',industry:'小売(雑貨)',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'090-2763-1109',email:'goooods内',contact_method:'',memo:''},
+  {id:'C033',no:33,first_order:'7年6月',name:'JewelCasket',contact:'宝子丸様',industry:'サロン',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'070-2314-8442',email:'goooods内',contact_method:'',memo:''},
+  {id:'C034',no:34,first_order:'7年7月',name:'アクエル',contact:'',industry:'飲食',trade_type:'卸飲料・物販',price_drink:null,price_goods:null,lot:'',delivery:'',tel:'',email:'',contact_method:'',memo:''},
+  {id:'C035',no:35,first_order:'7年7月',name:'コマモノヤkichi',contact:'杵鞭様',industry:'小売(雑貨)',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'024-905-2930',email:'goooods内',contact_method:'',memo:''},
+  {id:'C036',no:36,first_order:'7年7月',name:'株式会社トップレディ・ジャパン',contact:'板橋様',industry:'サロン',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'094-432-8602',email:'goooods内',contact_method:'',memo:''},
+  {id:'C037',no:37,first_order:'7年7月',name:'SAMOE',contact:'左官様',industry:'小売(雑貨)',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'080-5638-8895',email:'goooods内',contact_method:'',memo:''},
+  {id:'C038',no:38,first_order:'7年7月',name:'リラクゼーションカンパニーニャニャニャ',contact:'弘津様',industry:'サロン',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'080-1028-9393',email:'goooods内',contact_method:'',memo:''},
+  {id:'C039',no:39,first_order:'7年8月',name:'星ヶ丘山荘',contact:'大谷様',industry:'道の駅',trade_type:'卸物販',price_drink:null,price_goods:1106,lot:'',delivery:'',tel:'',email:'',contact_method:'',memo:''},
+  {id:'C040',no:40,first_order:'7年8月',name:'みねふじん',contact:'内田様',industry:'物販',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'090-8069-6568',email:'goooods内',contact_method:'',memo:''},
+  {id:'C041',no:41,first_order:'7年8月',name:'TherapySalon RINN',contact:'高津様',industry:'サロン',trade_type:'卸物販',price_drink:null,price_goods:1106,lot:'',delivery:'',tel:'',email:'',contact_method:'',memo:''},
+  {id:'C042',no:42,first_order:'7年9月',name:'アロマテラピーサロンプランチュール',contact:'飯田様',industry:'サロン',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'03-3904-0007',email:'goooods内',contact_method:'',memo:''},
+  {id:'C043',no:43,first_order:'7年9月',name:'(株)SAKI 旭や',contact:'玉井様',industry:'小売(雑貨)',trade_type:'EC卸販売',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'080-9142-3743',email:'goooods内',contact_method:'',memo:''},
+  {id:'C044',no:44,first_order:'7年9月',name:'薬草Laboハイルクラオト',contact:'安岡様',industry:'小売(雑貨)',trade_type:'卸物販',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'090-3822-0623',email:'オロシー内',contact_method:'',memo:''},
+  {id:'C045',no:45,first_order:'7年10月',name:'ANNEI',contact:'髙橋様',industry:'飲食',trade_type:'EC卸販売',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'090-7353-1959',email:'goooods内',contact_method:'',memo:''},
+  {id:'C046',no:46,first_order:'7年10月',name:'メディカルアロマサロンCÅMM',contact:'安藤様',industry:'サロン',trade_type:'EC卸販売',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'080-2793-7522',email:'goooods内',contact_method:'',memo:''},
+  {id:'C047',no:47,first_order:'7年10月',name:'魔女たちの薬箱',contact:'内藤様',industry:'サロン',trade_type:'EC卸販売',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'080-5087-1722',email:'goooods内',contact_method:'',memo:''},
+  {id:'C048',no:48,first_order:'7年11月',name:'てあて屋',contact:'上田様',industry:'サロン',trade_type:'EC卸販売',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'090-9265-8542',email:'goooods内',contact_method:'',memo:''},
+  {id:'C049',no:49,first_order:'7年12月',name:'タットヴァヨガ',contact:'大箸様',industry:'サロン',trade_type:'EC卸販売',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'090-7858-9261',email:'goooods内',contact_method:'',memo:''},
+  {id:'C050',no:50,first_order:'7年12月',name:'Yoga studio ito',contact:'関原様',industry:'サロン',trade_type:'EC卸販売',price_drink:null,price_goods:1185,lot:'なし',delivery:'ヤマト便',tel:'080-4387-0238',email:'goooods内',contact_method:'',memo:''},
+];
+
+const DEFAULT_PRODUCTS=[
+  {id:'CD-PK-050-2604A0000',flavor:'夕凪のマーメイド',pouch:'半透明',maker:'株式会社下園薩男商店',vol:'50',exp:'2026/04/17',stock:91,price:530},
+  {id:'CD-PU-050-2604A0000',flavor:'星夜のユニコーン',pouch:'半透明',maker:'株式会社下園薩男商店',vol:'50',exp:'2026/04/18',stock:77,price:530},
+  {id:'CD-RD-050-2604A0000',flavor:'蒼炎のドラゴン',pouch:'半透明',maker:'株式会社下園薩男商店',vol:'50',exp:'2026/04/21',stock:87,price:530},
+  {id:'CD-YL-050-2604A0000',flavor:'逆光のドワーフ',pouch:'半透明',maker:'株式会社下園薩男商店',vol:'50',exp:'2026/04/23',stock:90,price:530},
+  {id:'CD-PK-220-2604A0000',flavor:'夕凪のマーメイド',pouch:'半透明',maker:'株式会社下園薩男商店',vol:'220',exp:'2026/04/17',stock:90,price:1580},
+  {id:'CD-PU-220-2604A0000',flavor:'星夜のユニコーン',pouch:'半透明',maker:'株式会社下園薩男商店',vol:'220',exp:'2026/04/18',stock:204,price:1580},
+  {id:'CD-RD-220-2604A0000',flavor:'蒼炎のドラゴン',pouch:'半透明',maker:'株式会社下園薩男商店',vol:'220',exp:'2026/04/21',stock:150,price:1580},
+  {id:'CD-YL-220-2604A0000',flavor:'逆光のドワーフ',pouch:'半透明',maker:'株式会社下園薩男商店',vol:'220',exp:'2026/04/23',stock:84,price:1580},
+  {id:'CD-GI-001-2604A0000',flavor:'トライアルギフトセット',pouch:'半透明',maker:'株式会社下園薩男商店',vol:'50×4',exp:'',stock:0,price:2170},
+];
+
+// ===== 状態 =====
+let customers=[],products=[],orders=[];
+let orderSeq=1;
+
+// ===== HELPERS =====
+const todayDate=new Date();
+document.getElementById('today-label').textContent=`${todayDate.getFullYear()}年${todayDate.getMonth()+1}月${todayDate.getDate()}日`;
+function fmt(n){return'¥'+Number(n).toLocaleString();}
+function fDot(f){return`<span class="flavor-dot" style="background:${FLAVOR_COLOR[f]||'#888'}"></span>`;}
+function industryBadge(ind){const color=INDUSTRY_COLOR[ind]||'#5F5E5A';return`<span class="badge" style="background:${color}22;color:${color}">${ind}</span>`;}
+function tradeTypeBadge(t){const m={'卸飲料・物販':'bi','卸物販':'bs','卸飲料':'bw','委託物販':'bg','EC卸販売':'bv'};return`<span class="badge ${m[t]||'bg'}">${t}</span>`;}
+function parseExp(s){if(!s)return null;const p=s.split('/');return new Date(p[0],p[1]-1,p[2]);}
+function expStatus(s){const d=parseExp(s);if(!d)return'none';const diff=Math.floor((d-todayDate)/86400000);return diff<0?'past':diff<=30?'soon':'ok';}
+function expBadge(s){const st=expStatus(s);if(st==='past')return`<span class="badge bd">期限切れ</span>`;if(st==='soon')return`<span class="badge bw">期限間近</span>`;if(st==='none')return`<span class="badge bg">-</span>`;return`<span class="badge bs">正常</span>`;}
+function stockBadge(n){if(n===0)return`<span class="badge bd">在庫切れ</span>`;if(n<20)return`<span class="badge bw">残りわずか</span>`;return`<span class="badge bs">在庫あり</span>`;}
+function orderAmt(o){return o.qty*o.price;}
+function custName(id){const c=customers.find(x=>x.id===id);return c?c.name:id;}
+function prodName(id){const p=products.find(x=>x.id===id);return p?`${p.flavor} ${p.vol}ml`:id;}
+function yyyymm(d){return d?d.substring(0,7):'';}
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
+function setSaveStatus(state,text){const dot=document.getElementById('save-dot'),label=document.getElementById('save-label');dot.className='save-dot'+(state==='saving'?' saving':state==='error'?' error':'');label.textContent=text;}
+
+// ===== SUPABASE CRUD =====
+async function loadAll(){
+  try{
+    document.getElementById('loading-msg').textContent='得意先データを読込中...';
+    const {data:cd,error:ce}=await sb.from('customers').select('*').order('no');
+    if(ce)throw ce;
+    if(cd&&cd.length>0){customers=cd;}
+    else{
+      document.getElementById('loading-msg').textContent='初期データを登録中...';
+      const {error:ie}=await sb.from('customers').insert(INITIAL_CUSTOMERS);
+      if(ie)throw ie;
+      customers=INITIAL_CUSTOMERS;
+    }
+
+    document.getElementById('loading-msg').textContent='製品データを読込中...';
+    const {data:pd,error:pe}=await sb.from('products').select('*');
+    if(pe)throw pe;
+    if(pd&&pd.length>0){products=pd;}
+    else{
+      const {error:pie}=await sb.from('products').insert(DEFAULT_PRODUCTS);
+      if(pie)throw pie;
+      products=DEFAULT_PRODUCTS;
+    }
+
+    document.getElementById('loading-msg').textContent='受注データを読込中...';
+    const {data:od,error:oe}=await sb.from('orders').select('*').order('date',{ascending:false});
+    if(oe)throw oe;
+    orders=od||[];
+    if(orders.length>0){
+      const maxNum=Math.max(...orders.map(o=>parseInt(o.id.replace('SO-',''))||0));
+      orderSeq=maxNum+1;
+    }
+    setSaveStatus('ok','Supabase接続済み');
+  }catch(e){
+    console.error(e);
+    setSaveStatus('error','接続エラー');
+    showToast('❌ Supabase接続エラー: '+e.message);
+  }
+}
+
+// ===== DASHBOARD =====
+function renderDashboard(){
+  const total=products.reduce((s,p)=>s+(p.stock||0),0);
+  const zero=products.filter(p=>(p.stock||0)===0).length;
+  const sales=orders.reduce((s,o)=>s+orderAmt(o),0);
+  document.getElementById('d-stock').textContent=total;
+  document.getElementById('d-zero').textContent=zero;
+  document.getElementById('d-sales').textContent=fmt(sales);
+  document.getElementById('d-customers').textContent=customers.length;
+  const flavors=[...new Set(products.map(p=>p.flavor))];
+  const fData=flavors.map(f=>({f,n:products.filter(p=>p.flavor===f).reduce((s,p)=>s+(p.stock||0),0)})).sort((a,b)=>b.n-a.n);
+  const fMax=Math.max(...fData.map(d=>d.n),1);
+  document.getElementById('flavor-chart').innerHTML=fData.map(d=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">${fDot(d.f)}<span style="font-size:11px;color:#999;width:130px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.f}</span><div class="progress" style="flex:1"><div class="progress-bar" style="width:${Math.round(d.n/fMax*100)}%;background:${FLAVOR_COLOR[d.f]||'#888'}"></div></div><span style="font-size:11px;font-weight:500;min-width:28px;text-align:right">${d.n}</span></div>`).join('');
+  const indCount={};customers.forEach(c=>{indCount[c.industry]=(indCount[c.industry]||0)+1;});
+  const indSorted=Object.entries(indCount).sort((a,b)=>b[1]-a[1]);
+  const indMax=Math.max(...indSorted.map(([,n])=>n),1);
+  document.getElementById('industry-chart').innerHTML=indSorted.map(([ind,n])=>{const color=INDUSTRY_COLOR[ind]||'#888';return`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:11px;color:#999;width:90px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ind}</span><div class="progress" style="flex:1"><div class="progress-bar" style="width:${Math.round(n/indMax*100)}%;background:${color}"></div></div><span style="font-size:11px;font-weight:500;min-width:20px;text-align:right">${n}</span></div>`;}).join('');
+  const alerts=products.filter(p=>(p.stock||0)===0||expStatus(p.exp)==='past'||expStatus(p.exp)==='soon');
+  document.getElementById('alert-list').innerHTML=alerts.length?alerts.map(p=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid #f0ede8;font-size:11px">${fDot(p.flavor)}<span style="flex:1">${p.flavor} ${p.vol}ml</span><span style="color:${(p.stock||0)===0?'#A32D2D':'#999'};font-weight:500">${p.stock||0}個</span>${expBadge(p.exp)}</div>`).join(''):`<div class="empty-state">注意が必要な商品はありません</div>`;
+}
+
+// ===== CUSTOMERS =====
+function initCustomerFilters(){
+  const industries=[...new Set(customers.map(c=>c.industry))].sort();
+  const types=[...new Set(customers.map(c=>c.trade_type))].sort();
+  document.getElementById('f-cust-industry').innerHTML='<option value="">業種：全て</option>'+industries.map(i=>`<option>${i}</option>`).join('');
+  document.getElementById('f-cust-type').innerHTML='<option value="">取扱形態：全て</option>'+types.map(t=>`<option>${t}</option>`).join('');
+}
+function renderCustomers(){
+  const q=(document.getElementById('cust-search').value||'').toLowerCase();
+  const fi=document.getElementById('f-cust-industry').value;
+  const ft=document.getElementById('f-cust-type').value;
+  const list=customers.filter(c=>(!fi||c.industry===fi)&&(!ft||c.trade_type===ft)&&(!q||c.name.toLowerCase().includes(q)||(c.contact||'').toLowerCase().includes(q)));
+  document.getElementById('cust-count-label').textContent=`得意先一覧（${list.length}件）`;
+  document.getElementById('customer-table').innerHTML=list.length?list.map(c=>{
+    const sales=orders.filter(o=>o.customer_id===c.id).reduce((s,o)=>s+orderAmt(o),0);
+    return`<tr>
+      <td style="color:#999;font-size:10px;text-align:center">${c.no}</td>
+      <td style="font-size:10px;color:#999;white-space:nowrap">${c.first_order||''}</td>
+      <td style="font-weight:500"><a style="color:#185FA5;cursor:pointer" onclick="openCustomerDetail('${c.id}')">${c.name}</a></td>
+      <td style="color:#999;font-size:11px;white-space:nowrap">${c.contact||'-'}</td>
+      <td>${industryBadge(c.industry)}</td>
+      <td>${tradeTypeBadge(c.trade_type)}</td>
+      <td style="text-align:right;font-size:11px">${c.price_drink?fmt(c.price_drink):'-'}</td>
+      <td style="text-align:right;font-size:11px">${c.price_goods?fmt(c.price_goods):'-'}</td>
+      <td style="text-align:center;font-size:11px;color:#999">${c.lot||'-'}</td>
+      <td><span class="badge bg" style="font-size:9px">${c.delivery||'-'}</span></td>
+      <td style="font-size:10px;color:#999">${c.contact_method||'-'}</td>
+      <td style="text-align:right;font-weight:500">${sales>0?fmt(sales):'-'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="openCustomerDetail('${c.id}')">詳細</button>
+        <button class="btn btn-sm" onclick="openEditCustomer('${c.id}')" style="margin-left:4px">編集</button>
+      </td>
+    </tr>`;
+  }).join(''):`<tr><td colspan="13" class="empty-state">得意先が見つかりません</td></tr>`;
+}
+
+function openCustomerDetail(id){
+  const c=customers.find(x=>x.id===id);if(!c)return;
+  const co=orders.filter(o=>o.customer_id===id);
+  const ts=co.reduce((s,o)=>s+orderAmt(o),0);
+  const bm={};co.forEach(o=>{const m=yyyymm(o.date);if(!bm[m])bm[m]={cnt:0,amt:0};bm[m].cnt++;bm[m].amt+=orderAmt(o);});
+  document.getElementById('cd-title').textContent=c.name;
+  document.getElementById('cd-body').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div><div class="detail-grid">
+        <span class="di-label">No.</span><span>${c.no}</span>
+        <span class="di-label">初回受注日</span><span>${c.first_order||'-'}</span>
+        <span class="di-label">窓口担当者</span><span>${c.contact||'-'}</span>
+        <span class="di-label">業種</span><span>${industryBadge(c.industry)}</span>
+        <span class="di-label">取扱形態</span><span>${tradeTypeBadge(c.trade_type)}</span>
+        <span class="di-label">飲料卸価格</span><span style="font-weight:500">${c.price_drink?fmt(c.price_drink):'-'}</span>
+        <span class="di-label">物販卸価格</span><span style="font-weight:500">${c.price_goods?fmt(c.price_goods):'-'}</span>
+        <span class="di-label">ロット数</span><span>${c.lot||'-'}</span>
+        <span class="di-label">納品方法</span><span>${c.delivery||'-'}</span>
+      </div></div>
+      <div><div class="detail-grid">
+        <span class="di-label">電話番号</span><span>${c.tel||'-'}</span>
+        <span class="di-label">メール</span><span style="font-size:10px;word-break:break-all">${c.email||'-'}</span>
+        <span class="di-label">連絡手段</span><span>${c.contact_method||'-'}</span>
+        <span class="di-label">備考</span><span style="font-size:11px">${c.memo||'-'}</span>
+      </div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+      <div class="mc"><div class="ml">累計売上</div><div class="mv" style="font-size:16px">${fmt(ts)}</div></div>
+      <div class="mc"><div class="ml">受注件数</div><div class="mv" style="font-size:16px">${co.length}件</div></div>
+      <div class="mc"><div class="ml">平均受注額</div><div class="mv" style="font-size:16px">${co.length?fmt(Math.round(ts/co.length)):'-'}</div></div>
+    </div>
+    ${Object.keys(bm).length?`<div style="font-size:11px;font-weight:500;margin-bottom:8px;color:#999">月別売上</div><table style="font-size:11px;margin-bottom:14px"><thead><tr><th>年月</th><th>件数</th><th>売上</th></tr></thead><tbody>${Object.entries(bm).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,d])=>`<tr><td>${m}</td><td style="text-align:right">${d.cnt}件</td><td style="text-align:right;font-weight:500">${fmt(d.amt)}</td></tr>`).join('')}</tbody></table>`:''}
+    ${co.length?`<div style="font-size:11px;font-weight:500;margin-bottom:8px;color:#999">受注履歴</div><table style="font-size:11px"><thead><tr><th>受注番号</th><th>商品</th><th>数量</th><th>金額</th><th>日付</th></tr></thead><tbody>${co.slice().reverse().map(o=>`<tr><td style="color:#185FA5">${o.id}</td><td>${prodName(o.product_id)}</td><td style="text-align:right">${o.qty}</td><td style="text-align:right;font-weight:500">${fmt(orderAmt(o))}</td><td style="color:#999">${o.date}</td></tr>`).join('')}</tbody></table>`:'<div style="font-size:11px;color:#999;padding:8px 0">まだ受注履歴がありません</div>'}
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+      <button class="btn" onclick="closeModal('customer-detail')">閉じる</button>
+      <button class="btn btn-primary" onclick="closeModal('customer-detail');openEditCustomer('${c.id}')">編集する</button>
+    </div>`;
+  openModal('customer-detail');
+}
+
+function openNewCustomerModal(){
+  document.getElementById('customer-modal-title').textContent='得意先追加';
+  ['nc-name','nc-contact','nc-firstorder','nc-tel','nc-email','nc-contactmethod','nc-memo','nc-lot','nc-price-drink','nc-price-goods'].forEach(id=>{document.getElementById(id).value='';});
+  document.getElementById('nc-edit-id').value='';
+  openModal('new-customer');
+}
+function openEditCustomer(id){
+  const c=customers.find(x=>x.id===id);if(!c)return;
+  document.getElementById('customer-modal-title').textContent='得意先編集';
+  document.getElementById('nc-name').value=c.name||'';
+  document.getElementById('nc-contact').value=c.contact||'';
+  document.getElementById('nc-firstorder').value=c.first_order||'';
+  document.getElementById('nc-industry').value=c.industry||'小売(食品)';
+  document.getElementById('nc-tradetype').value=c.trade_type||'卸物販';
+  document.getElementById('nc-price-drink').value=c.price_drink||'';
+  document.getElementById('nc-price-goods').value=c.price_goods||'';
+  document.getElementById('nc-lot').value=c.lot||'';
+  document.getElementById('nc-delivery').value=c.delivery||'ヤマト便';
+  document.getElementById('nc-tel').value=c.tel||'';
+  document.getElementById('nc-email').value=c.email||'';
+  document.getElementById('nc-contactmethod').value=c.contact_method||'';
+  document.getElementById('nc-memo').value=c.memo||'';
+  document.getElementById('nc-edit-id').value=id;
+  openModal('new-customer');
+}
+async function saveCustomer(){
+  const name=document.getElementById('nc-name').value.trim();
+  if(!name){alert('得意先名を入力してください');return;}
+  const editId=document.getElementById('nc-edit-id').value;
+  const data={name,contact:document.getElementById('nc-contact').value,first_order:document.getElementById('nc-firstorder').value,industry:document.getElementById('nc-industry').value,trade_type:document.getElementById('nc-tradetype').value,price_drink:parseInt(document.getElementById('nc-price-drink').value)||null,price_goods:parseInt(document.getElementById('nc-price-goods').value)||null,lot:document.getElementById('nc-lot').value,delivery:document.getElementById('nc-delivery').value,tel:document.getElementById('nc-tel').value,email:document.getElementById('nc-email').value,contact_method:document.getElementById('nc-contactmethod').value,memo:document.getElementById('nc-memo').value};
+  setSaveStatus('saving','保存中...');
+  try{
+    if(editId){
+      const {error}=await sb.from('customers').update(data).eq('id',editId);
+      if(error)throw error;
+      Object.assign(customers.find(c=>c.id===editId),data);
+    }else{
+      const maxNo=Math.max(...customers.map(c=>c.no||0),0);
+      const newId='C'+String(Date.now()).slice(-6);
+      const newData={id:newId,no:maxNo+1,...data};
+      const {error}=await sb.from('customers').insert(newData);
+      if(error)throw error;
+      customers.push(newData);
+    }
+    setSaveStatus('ok','保存済み');
+    closeModal('new-customer');renderAll();initCustomerFilters();
+    showToast('✅ 得意先情報を保存しました');
+  }catch(e){setSaveStatus('error','保存エラー');showToast('❌ 保存エラー: '+e.message);}
+}
+
+// ===== PRODUCTS =====
+let filteredProducts=[];
+function filterProducts(){
+  const ff=document.getElementById('f-flavor').value,fv=document.getElementById('f-vol').value,fp=document.getElementById('f-pouch').value;
+  filteredProducts=products.filter(p=>(!ff||p.flavor===ff)&&(!fv||p.vol==fv)&&(!fp||p.pouch===fp));
+  document.getElementById('products-count').textContent=`全${filteredProducts.length}件`;
+  renderProductTable();
+}
+function renderProductTable(){
+  document.getElementById('product-table').innerHTML=filteredProducts.map(p=>`<tr><td style="font-size:10px;color:#999;white-space:nowrap">${p.id}</td><td>${fDot(p.flavor)} ${p.flavor}</td><td><span class="badge bg">${p.pouch}</span></td><td style="font-size:10px;color:#999">${(p.maker||'').replace('株式会社','(株)').replace('センター','C.')}</td><td>${p.vol}ml</td><td class="${expStatus(p.exp)==='past'?'expiry-past':expStatus(p.exp)==='soon'?'expiry-warn':'expiry-ok'}">${p.exp||'-'}</td><td style="text-align:right;font-weight:500;${(p.stock||0)===0?'color:#A32D2D':''}">${p.stock||0}</td><td style="text-align:right">${fmt(p.price)}</td><td>${stockBadge(p.stock||0)} ${expBadge(p.exp)}</td></tr>`).join('');
+}
+function initFilters(){
+  const flavors=[...new Set(products.map(p=>p.flavor))];
+  const vols=[...new Set(products.map(p=>p.vol))].sort();
+  const pouches=[...new Set(products.map(p=>p.pouch))];
+  document.getElementById('f-flavor').innerHTML='<option value="">フレーバー：全て</option>'+flavors.map(f=>`<option>${f}</option>`).join('');
+  document.getElementById('f-vol').innerHTML='<option value="">容量：全て</option>'+vols.map(v=>`<option value="${v}">${v}ml</option>`).join('');
+  document.getElementById('f-pouch').innerHTML='<option value="">パウチ：全て</option>'+pouches.map(p=>`<option>${p}</option>`).join('');
+  filterProducts();
+}
+async function addProduct(){
+  const flavor=document.getElementById('np-flavor').value,pouch=document.getElementById('np-pouch').value,vol=document.getElementById('np-vol').value,maker=document.getElementById('np-maker').value,exp=document.getElementById('np-exp').value.replace(/-/g,'/'),stock=parseInt(document.getElementById('np-stock').value)||0,price=parseInt(document.getElementById('np-price').value)||0;
+  const newProduct={id:'CD-NEW-'+Date.now(),flavor,pouch,maker,vol,exp,stock,price};
+  setSaveStatus('saving','保存中...');
+  try{
+    const {error}=await sb.from('products').insert(newProduct);
+    if(error)throw error;
+    products.push(newProduct);
+    setSaveStatus('ok','保存済み');
+    initFilters();renderAll();closeModal('new-product');showToast('✅ 商品を追加しました');
+  }catch(e){setSaveStatus('error','保存エラー');showToast('❌ 保存エラー: '+e.message);}
+}
+
+// ===== INVENTORY =====
+function renderInventory(){
+  document.getElementById('inv-table').innerHTML=products.map(p=>{const pct=Math.min(Math.round((p.stock||0)/Math.max(p.stock||0,200)*100),100);const color=(p.stock||0)===0?'#E24B4A':(p.stock||0)<20?'#BA7517':'#185FA5';return`<tr><td style="font-size:10px;color:#999;white-space:nowrap">${p.id}</td><td>${fDot(p.flavor)} ${p.flavor}</td><td>${p.vol}ml</td><td><span class="badge bg">${p.pouch}</span></td><td style="font-size:10px;color:#999">${(p.maker||'').replace('株式会社','(株)').replace('センター','C.')}</td><td style="text-align:right;font-weight:500;${(p.stock||0)===0?'color:#A32D2D':''}">${p.stock||0}</td><td class="${expStatus(p.exp)==='past'?'expiry-past':expStatus(p.exp)==='soon'?'expiry-warn':'expiry-ok'}">${p.exp||'-'}</td><td><div style="display:flex;align-items:center;gap:6px"><div class="progress" style="flex:1"><div class="progress-bar" style="width:${pct}%;background:${color}"></div></div>${stockBadge(p.stock||0)}</div></td></tr>`;}).join('');
+}
+function openAdjustModal(){
+  document.getElementById('adj-product').innerHTML=products.map(p=>`<option value="${p.id}">${p.flavor} ${p.vol}ml ${p.pouch}（在庫:${p.stock||0}）</option>`).join('');
+  updateAdjPreview();openModal('adjust');
+}
+function updateAdjPreview(){
+  const id=document.getElementById('adj-product').value,p=products.find(x=>x.id===id),type=document.getElementById('adj-type').value,qty=parseInt(document.getElementById('adj-qty').value)||0;
+  if(!p)return;const cur=p.stock||0,after=type==='add'?cur+qty:type==='sub'?Math.max(0,cur-qty):qty;
+  document.getElementById('adj-preview').innerHTML=`現在庫: <strong>${cur}</strong> → 調整後: <strong>${after}</strong>`;
+}
+async function doAdjust(){
+  const id=document.getElementById('adj-product').value,p=products.find(x=>x.id===id),type=document.getElementById('adj-type').value,qty=parseInt(document.getElementById('adj-qty').value)||0,note=document.getElementById('adj-note').value;
+  if(!p)return;
+  const cur=p.stock||0;
+  const newStock=type==='add'?cur+qty:type==='sub'?Math.max(0,cur-qty):qty;
+  setSaveStatus('saving','保存中...');
+  try{
+    const {error}=await sb.from('products').update({stock:newStock}).eq('id',id);
+    if(error)throw error;
+    await sb.from('stock_logs').insert({product_id:id,type,qty,note});
+    p.stock=newStock;
+    setSaveStatus('ok','保存済み');
+    closeModal('adjust');renderAll();showToast('✅ 在庫を調整しました');
+  }catch(e){setSaveStatus('error','保存エラー');showToast('❌ 保存エラー: '+e.message);}
+}
+
+// ===== ORDERS =====
+function initOrderFilters(){
+  document.getElementById('ord-cust-filter').innerHTML='<option value="">得意先：全て</option>'+customers.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  const months=[...new Set(orders.map(o=>yyyymm(o.date)).filter(Boolean))].sort();
+  document.getElementById('ord-month-filter').innerHTML='<option value="">月：全て</option>'+months.map(m=>`<option>${m}</option>`).join('');
+}
+function renderOrders(){
+  const fc=document.getElementById('ord-cust-filter').value,fm=document.getElementById('ord-month-filter').value;
+  const list=orders.filter(o=>(!fc||o.customer_id===fc)&&(!fm||yyyymm(o.date)===fm));
+  document.getElementById('ord-count-label').textContent=`受注一覧（${list.length}件）`;
+  document.getElementById('order-table').innerHTML=list.length?list.map(o=>`<tr><td style="color:#185FA5;font-weight:500">${o.id}</td><td>${custName(o.customer_id)}</td><td style="font-size:10px">${prodName(o.product_id)}</td><td style="text-align:right">${o.qty}</td><td style="text-align:right">${fmt(o.price)}</td><td style="text-align:right;font-weight:500">${fmt(orderAmt(o))}</td><td><span class="badge bs">受注済み</span></td><td style="color:#999">${o.date}</td></tr>`).join(''):`<tr><td colspan="8" class="empty-state">受注データがありません</td></tr>`;
+}
+function openNewOrderModal(){
+  const avail=products.filter(p=>(p.stock||0)>0);
+  document.getElementById('no-customer').innerHTML='<option value="">選択してください</option>'+customers.map(c=>`<option value="${c.id}">${c.no?c.no+'. ':''} ${c.name}</option>`).join('');
+  document.getElementById('no-product').innerHTML=avail.length?avail.map(p=>`<option value="${p.id}">${p.flavor} ${p.vol}ml ${p.pouch}（在庫:${p.stock}）</option>`).join(''):'<option value="">在庫のある商品がありません</option>';
+  const d=new Date();document.getElementById('no-date').value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  if(avail.length){document.getElementById('no-price').value=avail[0].price;document.getElementById('no-info').innerHTML=`在庫数: <strong>${avail[0].stock}個</strong> | 賞味期限: ${avail[0].exp||'-'}`;}
+  openModal('new-order');
+}
+function onOrderProductChange(){
+  const p=products.find(x=>x.id===document.getElementById('no-product').value);
+  if(p){document.getElementById('no-price').value=p.price;document.getElementById('no-info').innerHTML=`在庫数: <strong>${p.stock||0}個</strong> | 賞味期限: ${p.exp||'-'}`;}
+}
+async function addOrder(){
+  const custId=document.getElementById('no-customer').value;if(!custId){alert('得意先を選択してください');return;}
+  const productId=document.getElementById('no-product').value;if(!productId){alert('商品を選択してください');return;}
+  const qty=parseInt(document.getElementById('no-qty').value)||1,price=parseInt(document.getElementById('no-price').value)||0,date=document.getElementById('no-date').value;
+  const p=products.find(x=>x.id===productId);
+  if(qty>(p?.stock||0)){alert(`在庫が不足しています（在庫: ${p?.stock||0}個）`);return;}
+  const id=`SO-${String(orderSeq).padStart(4,'0')}`;
+  setSaveStatus('saving','保存中...');
+  try{
+    const {error:oe}=await sb.from('orders').insert({id,customer_id:custId,product_id:productId,qty,price,date});
+    if(oe)throw oe;
+    const newStock=(p.stock||0)-qty;
+    const {error:pe}=await sb.from('products').update({stock:newStock}).eq('id',productId);
+    if(pe)throw pe;
+    p.stock=newStock;
+    orders.unshift({id,customer_id:custId,product_id:productId,qty,price,date});
+    orderSeq++;
+    setSaveStatus('ok','保存済み');
+    closeModal('new-order');renderAll();initOrderFilters();showToast(`✅ 受注 ${id} を登録しました`);
+  }catch(e){setSaveStatus('error','保存エラー');showToast('❌ 保存エラー: '+e.message);}
+}
+
+// ===== SALES =====
+function switchSalesTab(tab,el){
+  document.querySelectorAll('.tab-nav .tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');
+  ['monthly','customer','product'].forEach(t=>document.getElementById('sales-tab-'+t).style.display=t===tab?'block':'none');
+  if(tab==='monthly')renderSalesMonthly();if(tab==='customer')renderSalesCustomer();if(tab==='product')renderSalesProduct();
+}
+function renderSalesMonthly(){
+  const bm={};orders.forEach(o=>{const m=yyyymm(o.date);if(!m)return;if(!bm[m])bm[m]={cnt:0,amt:0};bm[m].cnt++;bm[m].amt+=orderAmt(o);});
+  const months=Object.keys(bm).sort(),tot=orders.reduce((s,o)=>s+orderAmt(o),0),cnt=orders.length;
+  const top=months.reduce((a,m)=>bm[m].amt>=(bm[a]?.amt||0)?m:a,months[0]||'');
+  document.getElementById('sm-total').textContent=fmt(tot);document.getElementById('sm-count').textContent=cnt+'件';
+  document.getElementById('sm-avg').textContent=cnt?fmt(Math.round(tot/cnt)):'-';document.getElementById('sm-top').textContent=top||'-';
+  const mx=Math.max(...months.map(m=>bm[m].amt),1);
+  document.getElementById('monthly-bar-chart').innerHTML=months.length?months.map(m=>{const h=Math.round(bm[m].amt/mx*100);return`<div class="bar-col"><div class="bar-val">${Math.round(bm[m].amt/10000)}万</div><div class="bar-body" style="height:${h}px;background:#185FA5"></div><div class="bar-xlabel">${m.slice(5)}月</div></div>`;}).join(''):`<div class="empty-state" style="width:100%">受注データがありません</div>`;
+  document.getElementById('monthly-table').innerHTML=months.length?months.map((m,i)=>{const prev=i>0?bm[months[i-1]].amt:null;const diff=prev!=null?Math.round((bm[m].amt-prev)/prev*100):null;return`<tr><td style="font-weight:500">${m}</td><td style="text-align:right">${bm[m].cnt}件</td><td style="text-align:right;font-weight:500">${fmt(bm[m].amt)}</td><td style="text-align:right;${diff!=null?(diff>=0?'color:#3B6D11':'color:#A32D2D'):'color:#999'}">${diff!=null?(diff>=0?'▲':'▼')+Math.abs(diff)+'%':'-'}</td></tr>`;}).join(''):`<tr><td colspan="4" class="empty-state">データがありません</td></tr>`;
+}
+function renderSalesCustomer(){
+  const bc={};orders.forEach(o=>{if(!bc[o.customer_id])bc[o.customer_id]={cnt:0,qty:0,amt:0};bc[o.customer_id].cnt++;bc[o.customer_id].qty+=o.qty;bc[o.customer_id].amt+=orderAmt(o);});
+  const tot=orders.reduce((s,o)=>s+orderAmt(o),0)||1,sorted=Object.entries(bc).sort((a,b)=>b[1].amt-a[1].amt),rc=['#C9930B','#7D8A8E','#9E6B3F'];
+  document.getElementById('sales-customer-table').innerHTML=sorted.length?sorted.map(([id,d],i)=>`<tr><td><span class="rank-num ${i<3?'rank-'+(i+1):''}">${i+1}</span></td><td style="font-weight:500"><a style="color:#185FA5;cursor:pointer" onclick="openCustomerDetail('${id}')">${custName(id)}</a></td><td style="text-align:right">${d.cnt}件</td><td style="text-align:right">${d.qty}</td><td style="text-align:right;font-weight:500">${fmt(d.amt)}</td><td style="text-align:right"><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end"><div class="progress" style="width:60px"><div class="progress-bar" style="width:${Math.round(d.amt/tot*100)}%;background:${rc[i]||'#185FA5'}"></div></div>${Math.round(d.amt/tot*100)}%</div></td><td><button class="btn btn-sm" onclick="openCustomerDetail('${id}')">詳細</button></td></tr>`).join(''):`<tr><td colspan="7" class="empty-state">データがありません</td></tr>`;
+  const mx=Math.max(...sorted.map(([,d])=>d.amt),1);
+  document.getElementById('customer-bar-chart').innerHTML=sorted.length?sorted.slice(0,8).map(([id,d],i)=>`<div class="bar-col"><div class="bar-val">${Math.round(d.amt/10000)}万</div><div class="bar-body" style="height:${Math.round(d.amt/mx*100)}px;background:${rc[i]||'#185FA5'}"></div><div class="bar-xlabel">${custName(id).substring(0,5)}</div></div>`).join(''):`<div class="empty-state" style="width:100%">データがありません</div>`;
+  document.getElementById('detail-customer-select').innerHTML='<option value="">得意先を選択...</option>'+customers.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  renderCustomerMonthly();
+}
+function renderCustomerMonthly(){
+  const id=document.getElementById('detail-customer-select').value,el=document.getElementById('customer-monthly-detail');
+  if(!id){el.innerHTML='<div class="empty-state">得意先を選択してください</div>';return;}
+  const co=orders.filter(o=>o.customer_id===id),bm={};
+  co.forEach(o=>{const m=yyyymm(o.date);if(!bm[m])bm[m]={cnt:0,amt:0};bm[m].cnt++;bm[m].amt+=orderAmt(o);});
+  const months=Object.keys(bm).sort();
+  el.innerHTML=months.length?`<table style="font-size:11px"><thead><tr><th>年月</th><th>件数</th><th>売上</th></tr></thead><tbody>${months.map(m=>`<tr><td>${m}</td><td style="text-align:right">${bm[m].cnt}件</td><td style="text-align:right;font-weight:500">${fmt(bm[m].amt)}</td></tr>`).join('')}<tr style="font-weight:500"><td>合計</td><td style="text-align:right">${co.length}件</td><td style="text-align:right">${fmt(co.reduce((s,o)=>s+orderAmt(o),0))}</td></tr></tbody></table>`:`<div class="empty-state">受注履歴がありません</div>`;
+}
+function renderSalesProduct(){
+  const tot=orders.reduce((s,o)=>s+orderAmt(o),0)||1,bf={},bv={},bp={};
+  orders.forEach(o=>{const p=products.find(x=>x.id===o.product_id),f=p?p.flavor:'不明',v=p?p.vol+'ml':'不明';if(!bf[f])bf[f]={qty:0,amt:0};bf[f].qty+=o.qty;bf[f].amt+=orderAmt(o);if(!bv[v])bv[v]={qty:0,amt:0};bv[v].qty+=o.qty;bv[v].amt+=orderAmt(o);if(!bp[o.product_id])bp[o.product_id]={qty:0,amt:0};bp[o.product_id].qty+=o.qty;bp[o.product_id].amt+=orderAmt(o);});
+  const em=n=>`<tr><td colspan="${n}" class="empty-state">データがありません</td></tr>`;
+  document.getElementById('s-flavor').innerHTML=Object.entries(bf).sort((a,b)=>b[1].amt-a[1].amt).map(([f,d])=>`<tr><td>${fDot(f)} ${f}</td><td style="text-align:right">${d.qty}</td><td style="text-align:right;font-weight:500">${fmt(d.amt)}</td><td style="text-align:right;color:#999">${Math.round(d.amt/tot*100)}%</td></tr>`).join('')||em(4);
+  document.getElementById('s-vol').innerHTML=Object.entries(bv).sort((a,b)=>b[1].amt-a[1].amt).map(([v,d])=>`<tr><td>${v}</td><td style="text-align:right">${d.qty}</td><td style="text-align:right;font-weight:500">${fmt(d.amt)}</td><td style="text-align:right;color:#999">${Math.round(d.amt/tot*100)}%</td></tr>`).join('')||em(4);
+  const rc=['#C9930B','#7D8A8E','#9E6B3F'];
+  document.getElementById('s-product').innerHTML=Object.entries(bp).sort((a,b)=>b[1].amt-a[1].amt).map(([id,d],i)=>{const p=products.find(x=>x.id===id);return`<tr><td><span class="rank-num ${i<3?'rank-'+(i+1):''}">${i+1}</span></td><td>${p?`${fDot(p.flavor)} ${p.flavor}`:id}</td><td>${p?p.vol+'ml':'-'}</td><td>${p?`<span class="badge bg">${p.pouch}</span>`:'-'}</td><td style="text-align:right">${d.qty}</td><td style="text-align:right;font-weight:500">${fmt(d.amt)}</td><td style="text-align:right;color:#999">${Math.round(d.amt/tot*100)}%</td></tr>`;}).join('')||em(7);
+}
+
+// ===== CSV =====
+function escCsv(v){const s=String(v??'');return(s.includes(',')||s.includes('"')||s.includes('\n'))?`"${s.replace(/"/g,'""')}"`:s;}
+function buildCsv(headers,rows){return'\uFEFF'+[headers,...rows].map(r=>r.map(escCsv).join(',')).join('\r\n');}
+function downloadCsv(csv,filename){const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);}
+function todayStr(){const d=new Date();return`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;}
+function exportCSV(type){
+  const ts=todayStr();
+  if(type==='customers'||type==='all'){
+    const h=['No.','初回受注日','得意先名','窓口担当者','業種','取扱形態','飲料卸価格','物販卸価格','ロット数','納品方法','電話番号','メール','連絡手段','累計売上','備考'];
+    const rows=customers.map(c=>{const s=orders.filter(o=>o.customer_id===c.id).reduce((sum,o)=>sum+orderAmt(o),0);return[c.no,c.first_order,c.name,c.contact,c.industry,c.trade_type,c.price_drink||'',c.price_goods||'',c.lot,c.delivery,c.tel,c.email,c.contact_method,s,c.memo];});
+    downloadCsv(buildCsv(h,rows),`得意先データ_${ts}.csv`);
+    if(type==='customers')showToast('🏢 得意先CSVをダウンロードしました');
+  }
+  if(type==='orders'||type==='all'){
+    setTimeout(()=>{
+      const h=['受注番号','受注日','得意先名','商品','数量','単価','金額'];
+      const rows=orders.map(o=>[o.id,o.date,custName(o.customer_id),prodName(o.product_id),o.qty,o.price,orderAmt(o)]);
+      downloadCsv(buildCsv(h,rows),`受注データ_${ts}.csv`);
+      if(type==='orders')showToast('📋 受注CSVをダウンロードしました');
+    },type==='all'?500:0);
+  }
+  if(type==='inventory'||type==='all'){
+    setTimeout(()=>{
+      const h=['商品ID','フレーバー','容量(ml)','パウチ','製造場所','現在庫','賞味期限','定価','在庫状況'];
+      const rows=products.map(p=>[p.id,p.flavor,p.vol,p.pouch,p.maker,p.stock||0,p.exp||'',p.price,(p.stock||0)===0?'在庫切れ':(p.stock||0)<20?'残りわずか':'正常']);
+      downloadCsv(buildCsv(h,rows),`在庫データ_${ts}.csv`);
+      if(type==='inventory')showToast('📦 在庫CSVをダウンロードしました');
+    },type==='all'?1000:0);
+  }
+  if(type==='sales'||type==='all'){
+    setTimeout(()=>{
+      const h=['受注番号','年月','受注日','得意先名','商品','数量','単価','売上金額'];
+      const rows=orders.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(o=>[o.id,yyyymm(o.date),o.date,custName(o.customer_id),prodName(o.product_id),o.qty,o.price,orderAmt(o)]);
+      downloadCsv(buildCsv(h,rows),`売上データ_${ts}.csv`);
+      if(type==='sales')showToast('📊 売上CSVをダウンロードしました');
+    },type==='all'?1500:0);
+  }
+  if(type==='all')setTimeout(()=>showToast('✅ 全4ファイルのダウンロード完了！'),2000);
+}
+
+// ===== MODAL / PAGE =====
+function openModal(id){document.getElementById('modal-'+id).classList.add('open');}
+function closeModal(id){document.getElementById('modal-'+id).classList.remove('open');}
+function showPage(id,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');el.classList.add('active');
+  const t={dashboard:'ダッシュボード',customers:'得意先管理',products:'製品マスタ',inventory:'在庫管理',orders:'受注管理',sales:'売上管理'};
+  document.getElementById('page-title').textContent=t[id];
+  if(id==='sales')renderSalesMonthly();
+}
+function renderAll(){renderDashboard();renderProductTable();renderInventory();renderOrders();renderCustomers();renderSalesMonthly();initOrderFilters();}
+
+// ===== BOOT =====
+(async()=>{
+  await loadAll();
+  initFilters();initCustomerFilters();
+  renderAll();
+  document.getElementById('loading-overlay').style.display='none';
+  document.getElementById('main-app').style.display='flex';
+})();
+</script>
+</body>
+</html>
