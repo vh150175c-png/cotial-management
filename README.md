@@ -1,2 +1,0 @@
-# cotial-management
-Public
