@@ -227,7 +227,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
       </div>
       <div class="card" style="margin-bottom:0">
         <div class="card-header"><span class="card-title" id="ord-count-label">受注一覧</span></div>
-        <table><thead><tr><th>受注番号</th><th>得意先</th><th>商品</th><th>数量</th><th>単価</th><th>金額</th><th>ステータス</th><th>受注日</th></tr></thead>
+        <table><thead><tr><th>受注番号</th><th>得意先</th><th>商品</th><th>数量</th><th>単価</th><th>金額</th><th>ステータス</th><th>受注日</th><th>納品日</th></tr></thead>
         <tbody id="order-table"></tbody></table>
       </div>
     </div>
@@ -359,16 +359,18 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
 </div>
 
 <div class="modal-overlay" id="modal-new-order">
-  <div class="modal" style="width:500px">
+  <div class="modal" style="width:680px">
     <div class="modal-header"><span class="modal-title">新規受注登録</span><button class="close-btn" onclick="closeModal('new-order')">×</button></div>
-    <div class="form-grid">
-      <div class="fg" style="grid-column:1/-1"><label class="fl">得意先 *</label><select id="no-customer"><option value="">選択してください</option></select></div>
-      <div class="fg"><label class="fl">受注日</label><input type="date" id="no-date"></div>
-      <div class="fg"><label class="fl">商品（在庫あり）</label><select id="no-product" onchange="onOrderProductChange()"></select></div>
-      <div class="fg"><label class="fl">数量</label><input type="number" id="no-qty" min="1" value="1"></div>
-      <div class="fg"><label class="fl">単価 (円)</label><input type="number" id="no-price" min="0" value="530"></div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="fg" style="grid-column:1/-1"><label class="fl">得意先 *</label><select id="no-customer"></select></div>
+      <div class="fg"><label class="fl">受注日 *</label><input type="date" id="no-date"></div>
+      <div class="fg"><label class="fl">納品日</label><input type="date" id="no-delivery-date"></div>
+      <div class="fg"><label class="fl">備考</label><input type="text" id="no-memo" placeholder="配送メモなど"></div>
     </div>
-    <div id="no-info" style="font-size:11px;color:#999;margin-bottom:12px;padding:8px;background:#f5f4f0;border-radius:6px"></div>
+    <div style="font-size:11px;font-weight:500;margin-bottom:8px;color:#666">受注明細</div>
+    <div id="no-items-list"></div>
+    <button class="btn" onclick="addOrderItem()" style="width:100%;margin-bottom:14px;border-style:dashed">＋ 商品を追加</button>
+    <div id="no-total" style="font-size:12px;text-align:right;font-weight:500;margin-bottom:14px;color:#1a1a1a"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px">
       <button class="btn" onclick="closeModal('new-order')">キャンセル</button>
       <button class="btn btn-primary" onclick="addOrder()">受注登録</button>
@@ -749,39 +751,106 @@ function renderOrders(){
   const fc=document.getElementById('ord-cust-filter').value,fm=document.getElementById('ord-month-filter').value;
   const list=orders.filter(o=>(!fc||o.customer_id===fc)&&(!fm||yyyymm(o.date)===fm));
   document.getElementById('ord-count-label').textContent=`受注一覧（${list.length}件）`;
-  document.getElementById('order-table').innerHTML=list.length?list.map(o=>`<tr><td style="color:#185FA5;font-weight:500">${o.id}</td><td>${custName(o.customer_id)}</td><td style="font-size:10px">${prodName(o.product_id)}</td><td style="text-align:right">${o.qty}</td><td style="text-align:right">${fmt(o.price)}</td><td style="text-align:right;font-weight:500">${fmt(orderAmt(o))}</td><td><span class="badge bs">受注済み</span></td><td style="color:#999">${o.date}</td></tr>`).join(''):`<tr><td colspan="8" class="empty-state">受注データがありません</td></tr>`;
+  document.getElementById('order-table').innerHTML=list.length?list.map(o=>`<tr><td style="color:#185FA5;font-weight:500">${o.id}</td><td>${custName(o.customer_id)}</td><td style="font-size:10px">${prodName(o.product_id)}</td><td style="text-align:right">${o.qty}</td><td style="text-align:right">${fmt(o.price)}</td><td style="text-align:right;font-weight:500">${fmt(orderAmt(o))}</td><td><span class="badge bs">受注済み</span></td><td style="color:#999">${o.date}</td><td style="color:#185FA5">${o.delivery_date||'-'}</td></tr>`).join(''):`<tr><td colspan="9" class="empty-state">受注データがありません</td></tr>`;
 }
-function openNewOrderModal(){
+// 受注明細アイテム管理
+let orderItems=[];
+function getProductOptions(){
+  return products.map(p=>`<option value="${p.id}">${p.flavor} ${p.vol}ml ${p.pouch}（在庫:${p.stock||0}）</option>`).join('');
+}
+function renderOrderItems(){
+  const list=document.getElementById('no-items-list');
+  if(orderItems.length===0){list.innerHTML='';updateOrderTotal();return;}
+  list.innerHTML=orderItems.map((item,i)=>{
+    const p=products.find(x=>x.id===item.productId);
+    return`<div style="display:grid;grid-template-columns:2fr 80px 100px 24px;gap:8px;align-items:center;margin-bottom:8px;padding:10px;background:#f5f4f0;border-radius:6px">
+      <div class="fg" style="margin:0">
+        <label class="fl">商品</label>
+        <select onchange="onItemProductChange(${i},this.value)" style="font-size:11px">
+          ${products.map(p=>`<option value="${p.id}" ${p.id===item.productId?'selected':''}>${p.flavor} ${p.vol}ml ${p.pouch}（在庫:${p.stock||0}）</option>`).join('')}
+        </select>
+        ${p?`<div style="font-size:10px;color:#999;margin-top:2px">在庫: ${p.stock||0}個 | 賞味期限: ${p.exp||'-'}</div>`:''}
+      </div>
+      <div class="fg" style="margin:0">
+        <label class="fl">数量</label>
+        <input type="number" min="1" value="${item.qty}" onchange="onItemQtyChange(${i},this.value)" style="font-size:11px">
+      </div>
+      <div class="fg" style="margin:0">
+        <label class="fl">単価 (円)</label>
+        <input type="number" min="0" value="${item.price}" onchange="onItemPriceChange(${i},this.value)" style="font-size:11px">
+      </div>
+      <button onclick="removeOrderItem(${i})" style="background:none;border:none;cursor:pointer;color:#A32D2D;font-size:16px;padding:0;margin-top:14px">×</button>
+    </div>`;
+  }).join('');
+  updateOrderTotal();
+}
+function onItemProductChange(i,productId){
+  orderItems[i].productId=productId;
+  const p=products.find(x=>x.id===productId);
+  if(p)orderItems[i].price=p.price;
+  renderOrderItems();
+}
+function onItemQtyChange(i,val){orderItems[i].qty=parseInt(val)||1;updateOrderTotal();}
+function onItemPriceChange(i,val){orderItems[i].price=parseInt(val)||0;updateOrderTotal();}
+function removeOrderItem(i){orderItems.splice(i,1);renderOrderItems();}
+function addOrderItem(){
   const avail=products.filter(p=>(p.stock||0)>0);
+  if(!avail.length){showToast('在庫のある商品がありません');return;}
+  const p=avail[0];
+  orderItems.push({productId:p.id,qty:1,price:p.price||0});
+  renderOrderItems();
+}
+function updateOrderTotal(){
+  const total=orderItems.reduce((s,item)=>s+item.qty*(item.price||0),0);
+  document.getElementById('no-total').textContent=orderItems.length?`合計金額: ${fmt(total)}（${orderItems.length}品目）`:'';
+}
+
+function openNewOrderModal(){
+  orderItems=[];
   document.getElementById('no-customer').innerHTML='<option value="">選択してください</option>'+customers.map(c=>`<option value="${c.id}">${c.no?c.no+'. ':''} ${c.name}</option>`).join('');
-  document.getElementById('no-product').innerHTML=avail.length?avail.map(p=>`<option value="${p.id}">${p.flavor} ${p.vol}ml ${p.pouch}（在庫:${p.stock}）</option>`).join(''):'<option value="">在庫のある商品がありません</option>';
-  const d=new Date();document.getElementById('no-date').value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  if(avail.length){document.getElementById('no-price').value=avail[0].price;document.getElementById('no-info').innerHTML=`在庫数: <strong>${avail[0].stock}個</strong> | 賞味期限: ${avail[0].exp||'-'}`;}
+  const d=new Date();
+  document.getElementById('no-date').value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  document.getElementById('no-delivery-date').value='';
+  document.getElementById('no-memo').value='';
+  renderOrderItems();
   openModal('new-order');
 }
-function onOrderProductChange(){
-  const p=products.find(x=>x.id===document.getElementById('no-product').value);
-  if(p){document.getElementById('no-price').value=p.price;document.getElementById('no-info').innerHTML=`在庫数: <strong>${p.stock||0}個</strong> | 賞味期限: ${p.exp||'-'}`;}
-}
+
 async function addOrder(){
-  const custId=document.getElementById('no-customer').value;if(!custId){alert('得意先を選択してください');return;}
-  const productId=document.getElementById('no-product').value;if(!productId){alert('商品を選択してください');return;}
-  const qty=parseInt(document.getElementById('no-qty').value)||1,price=parseInt(document.getElementById('no-price').value)||0,date=document.getElementById('no-date').value;
-  const p=products.find(x=>x.id===productId);
-  if(qty>(p?.stock||0)){alert(`在庫が不足しています（在庫: ${p?.stock||0}個）`);return;}
-  const id=`SO-${String(orderSeq).padStart(4,'0')}`;
+  const custId=document.getElementById('no-customer').value;
+  if(!custId){alert('得意先を選択してください');return;}
+  if(orderItems.length===0){alert('商品を1つ以上追加してください');return;}
+  const date=document.getElementById('no-date').value;
+  if(!date){alert('受注日を入力してください');return;}
+  const deliveryDate=document.getElementById('no-delivery-date').value;
+
+  // 在庫チェック
+  for(const item of orderItems){
+    const p=products.find(x=>x.id===item.productId);
+    if(!p){alert('商品が見つかりません');return;}
+    if(item.qty>(p.stock||0)){alert(`「${p.flavor} ${p.vol}ml」の在庫が不足しています（在庫: ${p.stock||0}個、注文: ${item.qty}個）`);return;}
+  }
+
   setSaveStatus('saving','保存中...');
   try{
-    const {error:oe}=await sb.from('orders').insert({id,customer_id:custId,product_id:productId,qty,price,date});
-    if(oe)throw oe;
-    const newStock=(p.stock||0)-qty;
-    const {error:pe}=await sb.from('products').update({stock:newStock}).eq('id',productId);
-    if(pe)throw pe;
-    p.stock=newStock;
-    orders.unshift({id,customer_id:custId,product_id:productId,qty,price,date});
-    orderSeq++;
+    const groupId=`OG-${String(orderSeq).padStart(4,'0')}`;
+    const newOrders=[];
+    for(const item of orderItems){
+      const id=`SO-${String(orderSeq).padStart(4,'0')}`;
+      const p=products.find(x=>x.id===item.productId);
+      const {error:oe}=await sb.from('orders').insert({id,customer_id:custId,product_id:item.productId,qty:item.qty,price:item.price,date,delivery_date:deliveryDate||null,order_group_id:groupId});
+      if(oe)throw oe;
+      const newStock=(p.stock||0)-item.qty;
+      const {error:pe}=await sb.from('products').update({stock:newStock}).eq('id',item.productId);
+      if(pe)throw pe;
+      p.stock=newStock;
+      newOrders.push({id,customer_id:custId,product_id:item.productId,qty:item.qty,price:item.price,date,delivery_date:deliveryDate||null,order_group_id:groupId});
+      orderSeq++;
+    }
+    orders.unshift(...newOrders);
     setSaveStatus('ok','保存済み');
-    closeModal('new-order');renderAll();initOrderFilters();showToast(`✅ 受注 ${id} を登録しました`);
+    closeModal('new-order');renderAll();initOrderFilters();
+    showToast(`✅ 受注${newOrders.length}件を登録しました`);
   }catch(e){setSaveStatus('error','保存エラー');showToast('❌ 保存エラー: '+e.message);}
 }
 
