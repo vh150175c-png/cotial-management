@@ -138,6 +138,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
   <div class="topbar">
     <h1 id="page-title">ダッシュボード</h1>
     <div style="display:flex;gap:8px;align-items:center">
+      <button onclick="showPage('orders',document.querySelector('.nav-item:nth-child(5)'));openNewOrderModal()" style="display:flex;align-items:center;gap:8px;padding:8px 18px;font-size:13px;font-weight:600;background:#185FA5;color:#fff;border:none;border-radius:8px;cursor:pointer;box-shadow:0 2px 8px rgba(24,95,165,0.25)">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="14" height="14" rx="2"/><path d="M9 6v6M6 9h6"/></svg>
+        新規受注
+      </button>
       <button class="btn btn-green" onclick="openModal('csv-export')">📥 CSVエクスポート</button>
       <span style="font-size:10px;color:#999" id="today-label"></span>
     </div>
@@ -195,7 +199,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
       </div>
       <div class="card" style="margin-bottom:0">
         <div class="card-header"><span class="card-title" id="products-count">全製品</span></div>
-        <table><thead><tr><th>商品ID</th><th>フレーバー</th><th>パウチ</th><th>製造場所</th><th>容量</th><th>賞味期限</th><th>現在庫</th><th>定価</th><th>状態</th></tr></thead>
+        <table><thead><tr><th>商品ID</th><th>フレーバー</th><th>パウチ</th><th>製造場所</th><th>容量</th><th>賞味期限</th><th>現在庫</th><th>定価</th><th>仕入原価</th><th>状態</th></tr></thead>
         <tbody id="product-table"></tbody></table>
       </div>
     </div>
@@ -333,6 +337,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
       <div class="fg"><label class="fl">賞味期限</label><input type="date" id="np-exp"></div>
       <div class="fg"><label class="fl">初期在庫</label><input type="number" id="np-stock" value="0" min="0"></div>
       <div class="fg"><label class="fl">定価 (円)</label><input type="number" id="np-price" value="530" min="0"></div>
+      <div class="fg"><label class="fl">仕入原価 (円)</label><input type="number" id="np-cost" placeholder="0" min="0"></div>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:8px">
       <button class="btn" onclick="closeModal('new-product')">キャンセル</button>
@@ -369,7 +374,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
     </div>
     <div style="font-size:11px;font-weight:500;margin-bottom:8px;color:#666">受注明細</div>
     <div id="no-items-list"></div>
-    <button class="btn" onclick="addOrderItem()" style="width:100%;margin-bottom:14px;border-style:dashed">＋ 商品を追加</button>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn" onclick="addOrderItem()" style="flex:1;border-style:dashed">＋ 通常商品を追加</button>
+      <button class="btn" onclick="addGiftSetItem()" style="flex:1;border-style:dashed;border-color:#1D9E75;color:#1D9E75">🎁 ギフトセットを追加</button>
+    </div>
     <div id="no-total" style="font-size:12px;text-align:right;font-weight:500;margin-bottom:14px;color:#1a1a1a"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px">
       <button class="btn" onclick="closeModal('new-order')">キャンセル</button>
@@ -688,7 +696,7 @@ function filterProducts(){
   renderProductTable();
 }
 function renderProductTable(){
-  document.getElementById('product-table').innerHTML=filteredProducts.map(p=>`<tr><td style="font-size:10px;color:#999;white-space:nowrap">${p.id}</td><td>${fDot(p.flavor)} ${p.flavor}</td><td><span class="badge bg">${p.pouch}</span></td><td style="font-size:10px;color:#999">${(p.maker||'').replace('株式会社','(株)').replace('センター','C.')}</td><td>${p.vol}ml</td><td class="${expStatus(p.exp)==='past'?'expiry-past':expStatus(p.exp)==='soon'?'expiry-warn':'expiry-ok'}">${p.exp||'-'}</td><td style="text-align:right;font-weight:500;${(p.stock||0)===0?'color:#A32D2D':''}">${p.stock||0}</td><td style="text-align:right">${fmt(p.price)}</td><td>${stockBadge(p.stock||0)} ${expBadge(p.exp)}</td></tr>`).join('');
+  document.getElementById('product-table').innerHTML=filteredProducts.map(p=>`<tr><td style="font-size:10px;color:#999;white-space:nowrap">${p.id}</td><td>${fDot(p.flavor)} ${p.flavor}</td><td><span class="badge bg">${p.pouch}</span></td><td style="font-size:10px;color:#999">${(p.maker||'').replace('株式会社','(株)').replace('センター','C.')}</td><td>${p.vol}ml</td><td class="${expStatus(p.exp)==='past'?'expiry-past':expStatus(p.exp)==='soon'?'expiry-warn':'expiry-ok'}">${p.exp||'-'}</td><td style="text-align:right;font-weight:500;${(p.stock||0)===0?'color:#A32D2D':''}">${p.stock||0}</td><td style="text-align:right">${fmt(p.price)}</td><td style="text-align:right;color:#854F0B">${p.cost?fmt(p.cost):'-'}</td><td>${stockBadge(p.stock||0)} ${expBadge(p.exp)}</td></tr>`).join('');
 }
 function initFilters(){
   const flavors=[...new Set(products.map(p=>p.flavor))];
@@ -700,8 +708,8 @@ function initFilters(){
   filterProducts();
 }
 async function addProduct(){
-  const flavor=document.getElementById('np-flavor').value,pouch=document.getElementById('np-pouch').value,vol=document.getElementById('np-vol').value,maker=document.getElementById('np-maker').value,exp=document.getElementById('np-exp').value.replace(/-/g,'/'),stock=parseInt(document.getElementById('np-stock').value)||0,price=parseInt(document.getElementById('np-price').value)||0;
-  const newProduct={id:'CD-NEW-'+Date.now(),flavor,pouch,maker,vol,exp,stock,price};
+  const flavor=document.getElementById('np-flavor').value,pouch=document.getElementById('np-pouch').value,vol=document.getElementById('np-vol').value,maker=document.getElementById('np-maker').value,exp=document.getElementById('np-exp').value.replace(/-/g,'/'),stock=parseInt(document.getElementById('np-stock').value)||0,price=parseInt(document.getElementById('np-price').value)||0,cost=parseInt(document.getElementById('np-cost').value)||null;
+  const newProduct={id:'CD-NEW-'+Date.now(),flavor,pouch,maker,vol,exp,stock,price,cost};
   setSaveStatus('saving','保存中...');
   try{
     const {error}=await sb.from('products').insert(newProduct);
@@ -717,7 +725,7 @@ function renderInventory(){
   document.getElementById('inv-table').innerHTML=products.map(p=>{const pct=Math.min(Math.round((p.stock||0)/Math.max(p.stock||0,200)*100),100);const color=(p.stock||0)===0?'#E24B4A':(p.stock||0)<20?'#BA7517':'#185FA5';return`<tr><td style="font-size:10px;color:#999;white-space:nowrap">${p.id}</td><td>${fDot(p.flavor)} ${p.flavor}</td><td>${p.vol}ml</td><td><span class="badge bg">${p.pouch}</span></td><td style="font-size:10px;color:#999">${(p.maker||'').replace('株式会社','(株)').replace('センター','C.')}</td><td style="text-align:right;font-weight:500;${(p.stock||0)===0?'color:#A32D2D':''}">${p.stock||0}</td><td class="${expStatus(p.exp)==='past'?'expiry-past':expStatus(p.exp)==='soon'?'expiry-warn':'expiry-ok'}">${p.exp||'-'}</td><td><div style="display:flex;align-items:center;gap:6px"><div class="progress" style="flex:1"><div class="progress-bar" style="width:${pct}%;background:${color}"></div></div>${stockBadge(p.stock||0)}</div></td></tr>`;}).join('');
 }
 function openAdjustModal(){
-  document.getElementById('adj-product').innerHTML=products.map(p=>`<option value="${p.id}">${p.flavor} ${p.vol}ml ${p.pouch}（在庫:${p.stock||0}）</option>`).join('');
+  document.getElementById('adj-product').innerHTML=products.map(p=>`<option value="${p.id}">${p.flavor} ${p.vol}ml ${p.pouch}　賞味期限:${p.exp||'なし'}　在庫:${p.stock||0}個</option>`).join('');
   updateAdjPreview();openModal('adjust');
 }
 function updateAdjPreview(){
@@ -753,56 +761,162 @@ function renderOrders(){
   document.getElementById('ord-count-label').textContent=`受注一覧（${list.length}件）`;
   document.getElementById('order-table').innerHTML=list.length?list.map(o=>`<tr><td style="color:#185FA5;font-weight:500">${o.id}</td><td>${custName(o.customer_id)}</td><td style="font-size:10px">${prodName(o.product_id)}</td><td style="text-align:right">${o.qty}</td><td style="text-align:right">${fmt(o.price)}</td><td style="text-align:right;font-weight:500">${fmt(orderAmt(o))}</td><td><span class="badge bs">受注済み</span></td><td style="color:#999">${o.date}</td><td style="color:#185FA5">${o.delivery_date||'-'}</td></tr>`).join(''):`<tr><td colspan="9" class="empty-state">受注データがありません</td></tr>`;
 }
+// ギフトセット定義
+const GIFT_FLAVORS=['夕凪のマーメイド','蒼炎のドラゴン','逆光のドワーフ','星夜のユニコーン'];
+function get50mlByFlavor(flavor){return products.filter(p=>p.flavor===flavor&&String(p.vol)==='50');}
+
 // 受注明細アイテム管理
 let orderItems=[];
-function getProductOptions(){
-  return products.map(p=>`<option value="${p.id}">${p.flavor} ${p.vol}ml ${p.pouch}（在庫:${p.stock||0}）</option>`).join('');
-}
+
 function renderOrderItems(){
   const list=document.getElementById('no-items-list');
-  if(orderItems.length===0){list.innerHTML='';updateOrderTotal();return;}
+  if(orderItems.length===0){list.innerHTML='<div style="font-size:11px;color:#999;text-align:center;padding:12px">商品を追加してください</div>';updateOrderTotal();return;}
   list.innerHTML=orderItems.map((item,i)=>{
-    const p=products.find(x=>x.id===item.productId);
-    return`<div style="display:grid;grid-template-columns:2fr 80px 100px 24px;gap:8px;align-items:center;margin-bottom:8px;padding:10px;background:#f5f4f0;border-radius:6px">
-      <div class="fg" style="margin:0">
-        <label class="fl">商品</label>
-        <select onchange="onItemProductChange(${i},this.value)" style="font-size:11px">
-          ${products.map(p=>`<option value="${p.id}" ${p.id===item.productId?'selected':''}>${p.flavor} ${p.vol}ml ${p.pouch}（在庫:${p.stock||0}）</option>`).join('')}
-        </select>
-        ${p?`<div style="font-size:10px;color:#999;margin-top:2px">在庫: ${p.stock||0}個 | 賞味期限: ${p.exp||'-'}</div>`:''}
-      </div>
-      <div class="fg" style="margin:0">
-        <label class="fl">数量</label>
-        <input type="number" min="1" value="${item.qty}" onchange="onItemQtyChange(${i},this.value)" style="font-size:11px">
-      </div>
-      <div class="fg" style="margin:0">
-        <label class="fl">単価 (円)</label>
-        <input type="number" min="0" value="${item.price}" onchange="onItemPriceChange(${i},this.value)" style="font-size:11px">
-      </div>
-      <button onclick="removeOrderItem(${i})" style="background:none;border:none;cursor:pointer;color:#A32D2D;font-size:16px;padding:0;margin-top:14px">×</button>
-    </div>`;
+    if(item.isGiftComponent){
+      // ギフトセット構成品行
+      const opts=get50mlByFlavor(item.flavor);
+      const sel=products.find(x=>x.id===item.productId);
+      return`<div style="display:grid;grid-template-columns:130px 1fr 60px 24px;gap:8px;align-items:center;margin-bottom:6px;padding:8px 10px;background:#fdf6f9;border-radius:6px;border-left:3px solid #D4537E">
+        <div style="font-size:11px;font-weight:500;color:#993556">${item.flavor}<div style="font-size:9px;color:#bbb;font-weight:400;margin-top:2px">ギフト構成</div></div>
+        <div class="fg" style="margin:0">
+          <label class="fl">ロット（賞味期限）</label>
+          <select onchange="onGiftLotChange(${i},this.value)" style="font-size:11px">
+            ${opts.length?opts.map(p=>`<option value="${p.id}" ${p.id===item.productId?'selected':''}>${p.exp||'期限なし'}　在庫:${p.stock||0}個</option>`).join(''):'<option value="">在庫なし</option>'}
+          </select>
+          ${sel?`<div style="font-size:10px;color:#999;margin-top:2px">選択中在庫: ${sel.stock||0}個</div>`:''}
+        </div>
+        <div style="font-size:11px;text-align:center;color:#666;padding-top:14px">×1本</div>
+        <div></div>
+      </div>`;
+    }else{
+      // 通常商品行：フレーバー選択→ロット選択の2段階
+      const p=products.find(x=>x.id===item.productId);
+      const isGift=p&&p.flavor==='トライアルギフトセット';
+      // フレーバー一覧（ユニーク）
+      const flavors=[...new Set(products.filter(q=>q.flavor!=='トライアルギフトセット').map(q=>q.flavor))];
+      const selectedFlavor=p?p.flavor:'';
+      // 選択中フレーバーのロット一覧
+      const lots=products.filter(q=>q.flavor===selectedFlavor&&!isGift);
+      return`<div style="margin-bottom:10px;padding:10px;background:#f5f4f0;border-radius:6px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div class="fg" style="margin:0">
+            <label class="fl">フレーバー</label>
+            <select onchange="onItemFlavorChange(${i},this.value)" style="font-size:11px">
+              <option value="">選択してください</option>
+              ${flavors.map(f=>`<option value="${f}" ${f===selectedFlavor?'selected':''}>${f}</option>`).join('')}
+              <option value="__gift__" ${isGift?'selected':''}>🎁 トライアルギフトセット</option>
+            </select>
+          </div>
+          <div class="fg" style="margin:0">
+            <label class="fl">ロット（賞味期限）</label>
+            <select onchange="onItemLotChange(${i},this.value)" style="font-size:11px" ${!selectedFlavor||isGift?'disabled':''}>
+              ${isGift?`<option>ギフトセット（以下で選択）</option>`:
+                lots.length?lots.map(q=>`<option value="${q.id}" ${q.id===item.productId?'selected':''}>${q.exp||'期限なし'}　在庫:${q.stock||0}個　原価:${q.cost?fmt(q.cost):'-'}</option>`).join('')
+                :'<option value="">在庫のあるロットなし</option>'}
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:80px 100px 1fr 24px;gap:8px;align-items:center">
+          <div class="fg" style="margin:0">
+            <label class="fl">数量</label>
+            <input type="number" min="1" value="${item.qty}" onchange="onItemQtyChange(${i},this.value)" style="font-size:11px" ${isGift?'readonly':''}> 
+          </div>
+          <div class="fg" style="margin:0">
+            <label class="fl">単価 (円)</label>
+            <input type="number" min="0" value="${item.price}" onchange="onItemPriceChange(${i},this.value)" style="font-size:11px">
+          </div>
+          <div style="font-size:10px;color:#854F0B;padding-top:14px">
+            ${p&&p.cost?`仕入原価: ${fmt(p.cost)}／個　粗利: ${fmt((item.price||0)-(p.cost||0))}`:p?'原価未設定':''}
+          </div>
+          <button onclick="removeOrderItem(${i})" style="background:none;border:none;cursor:pointer;color:#A32D2D;font-size:16px;padding:0;margin-top:14px">×</button>
+        </div>
+        ${isGift?`<div style="font-size:10px;color:#1D9E75;margin-top:6px">✓ 4フレーバー各1本のロットを以下で選択してください</div>`:''}
+      </div>`;
+    }
   }).join('');
   updateOrderTotal();
 }
-function onItemProductChange(i,productId){
-  orderItems[i].productId=productId;
-  const p=products.find(x=>x.id===productId);
-  if(p)orderItems[i].price=p.price;
+
+function onGiftLotChange(i,productId){orderItems[i].productId=productId;renderOrderItems();}
+
+function onItemFlavorChange(i,flavor){
+  if(flavor==='__gift__'){
+    // ギフトセットに変更
+    const giftProd=products.find(p=>p.flavor==='トライアルギフトセット');
+    orderItems[i]={productId:giftProd?giftProd.id:'',qty:1,price:giftProd?giftProd.price||2170:2170,isGift:true};
+    const components=GIFT_FLAVORS.map(fl=>{
+      const opts=get50mlByFlavor(fl);
+      return{productId:opts.length?opts[0].id:'',qty:1,price:0,isGiftComponent:true,flavor:fl};
+    });
+    orderItems.splice(i+1,0,...components);
+  }else{
+    // フレーバーを変えたらそのフレーバーの最初のロットを選択
+    const lots=products.filter(p=>p.flavor===flavor);
+    const first=lots[0];
+    orderItems[i]={...orderItems[i],productId:first?first.id:'',price:first?first.price||0:0,isGift:false};
+  }
   renderOrderItems();
 }
+
+function onItemLotChange(i,productId){
+  orderItems[i].productId=productId;
+  const p=products.find(x=>x.id===productId);
+  if(p)orderItems[i].price=p.price||0;
+  renderOrderItems();
+}
+
+function onItemProductChange(i,productId){
+  const p=products.find(x=>x.id===productId);
+  const nowGift=p&&p.flavor==='トライアルギフトセット';
+  const wasGift=orderItems[i].isGift;
+  if(nowGift&&!wasGift){
+    orderItems[i]={productId,qty:1,price:p.price||2170,isGift:true};
+    const components=GIFT_FLAVORS.map(flavor=>{
+      const opts=get50mlByFlavor(flavor);
+      return{productId:opts.length?opts[0].id:'',qty:1,price:0,isGiftComponent:true,flavor};
+    });
+    orderItems.splice(i+1,0,...components);
+  }else if(!nowGift&&wasGift){
+    orderItems=orderItems.filter(x=>!x.isGiftComponent);
+    orderItems[i]={productId,qty:1,price:p?p.price:0,isGift:false};
+  }else{
+    orderItems[i].productId=productId;
+    if(p&&!nowGift)orderItems[i].price=p.price;
+  }
+  renderOrderItems();
+}
+
 function onItemQtyChange(i,val){orderItems[i].qty=parseInt(val)||1;updateOrderTotal();}
 function onItemPriceChange(i,val){orderItems[i].price=parseInt(val)||0;updateOrderTotal();}
-function removeOrderItem(i){orderItems.splice(i,1);renderOrderItems();}
+function removeOrderItem(i){
+  if(orderItems[i].isGift){
+    // ギフト本体削除→構成品も削除
+    orderItems=orderItems.filter(x=>!x.isGiftComponent);
+  }
+  orderItems.splice(i,1);
+  renderOrderItems();
+}
 function addOrderItem(){
-  const avail=products.filter(p=>(p.stock||0)>0);
-  if(!avail.length){showToast('在庫のある商品がありません');return;}
-  const p=avail[0];
-  orderItems.push({productId:p.id,qty:1,price:p.price||0});
+  const p=products.filter(p=>p.flavor!=='トライアルギフトセット')[0]||products[0];
+  if(!p){showToast('商品がありません');return;}
+  orderItems.push({productId:p.id,qty:1,price:p.price||0,isGift:false});
+  renderOrderItems();
+}
+function addGiftSetItem(){
+  const giftProd=products.find(p=>p.flavor==='トライアルギフトセット');
+  if(!giftProd){showToast('ギフトセット商品が登録されていません');return;}
+  const insertAt=orderItems.filter(x=>!x.isGiftComponent).length;
+  orderItems.push({productId:giftProd.id,qty:1,price:giftProd.price||2170,isGift:true});
+  GIFT_FLAVORS.forEach(flavor=>{
+    const opts=get50mlByFlavor(flavor);
+    orderItems.push({productId:opts.length?opts[0].id:'',qty:1,price:0,isGiftComponent:true,flavor});
+  });
   renderOrderItems();
 }
 function updateOrderTotal(){
-  const total=orderItems.reduce((s,item)=>s+item.qty*(item.price||0),0);
-  document.getElementById('no-total').textContent=orderItems.length?`合計金額: ${fmt(total)}（${orderItems.length}品目）`:'';
+  const mainItems=orderItems.filter(x=>!x.isGiftComponent);
+  const total=mainItems.reduce((s,item)=>s+item.qty*(item.price||0),0);
+  document.getElementById('no-total').textContent=mainItems.length?`合計金額: ${fmt(total)}（${mainItems.length}品目）`:'';
 }
 
 function openNewOrderModal(){
@@ -819,16 +933,26 @@ function openNewOrderModal(){
 async function addOrder(){
   const custId=document.getElementById('no-customer').value;
   if(!custId){alert('得意先を選択してください');return;}
-  if(orderItems.length===0){alert('商品を1つ以上追加してください');return;}
+  const mainItems=orderItems.filter(x=>!x.isGiftComponent);
+  if(mainItems.length===0){alert('商品を1つ以上追加してください');return;}
   const date=document.getElementById('no-date').value;
   if(!date){alert('受注日を入力してください');return;}
   const deliveryDate=document.getElementById('no-delivery-date').value;
 
-  // 在庫チェック
+  // 在庫チェック（通常商品 + ギフト構成品）
   for(const item of orderItems){
+    if(!item.productId){
+      if(item.isGiftComponent)alert(`ギフトセット構成品「${item.flavor}」のロットを選択してください`);
+      else alert('商品を選択してください');
+      return;
+    }
     const p=products.find(x=>x.id===item.productId);
     if(!p){alert('商品が見つかりません');return;}
-    if(item.qty>(p.stock||0)){alert(`「${p.flavor} ${p.vol}ml」の在庫が不足しています（在庫: ${p.stock||0}個、注文: ${item.qty}個）`);return;}
+    // ギフト本体（isGift）は在庫チェック不要（構成品で管理）
+    if(!item.isGift&&item.qty>(p.stock||0)){
+      alert(`「${p.flavor} ${p.vol}ml 賞味期限:${p.exp||'なし'}」の在庫が不足しています（在庫: ${p.stock||0}個、注文: ${item.qty}個）`);
+      return;
+    }
   }
 
   setSaveStatus('saving','保存中...');
@@ -836,21 +960,31 @@ async function addOrder(){
     const groupId=`OG-${String(orderSeq).padStart(4,'0')}`;
     const newOrders=[];
     for(const item of orderItems){
-      const id=`SO-${String(orderSeq).padStart(4,'0')}`;
       const p=products.find(x=>x.id===item.productId);
-      const {error:oe}=await sb.from('orders').insert({id,customer_id:custId,product_id:item.productId,qty:item.qty,price:item.price,date,delivery_date:deliveryDate||null,order_group_id:groupId});
+      if(!p)continue;
+      // ギフト本体は受注レコードとして登録（在庫は引かない）
+      // ギフト構成品は在庫を引くが受注レコードにも記録
+      const id=`SO-${String(orderSeq).padStart(4,'0')}`;
+      const {error:oe}=await sb.from('orders').insert({
+        id,customer_id:custId,product_id:item.productId,
+        qty:item.qty,price:item.isGiftComponent?0:item.price,
+        date,delivery_date:deliveryDate||null,order_group_id:groupId
+      });
       if(oe)throw oe;
-      const newStock=(p.stock||0)-item.qty;
-      const {error:pe}=await sb.from('products').update({stock:newStock}).eq('id',item.productId);
-      if(pe)throw pe;
-      p.stock=newStock;
-      newOrders.push({id,customer_id:custId,product_id:item.productId,qty:item.qty,price:item.price,date,delivery_date:deliveryDate||null,order_group_id:groupId});
+      // 在庫を引く（ギフト本体は引かない、構成品と通常商品は引く）
+      if(!item.isGift){
+        const newStock=(p.stock||0)-item.qty;
+        const {error:pe}=await sb.from('products').update({stock:newStock}).eq('id',item.productId);
+        if(pe)throw pe;
+        p.stock=newStock;
+      }
+      newOrders.push({id,customer_id:custId,product_id:item.productId,qty:item.qty,price:item.isGiftComponent?0:item.price,date,delivery_date:deliveryDate||null,order_group_id:groupId});
       orderSeq++;
     }
     orders.unshift(...newOrders);
     setSaveStatus('ok','保存済み');
     closeModal('new-order');renderAll();initOrderFilters();
-    showToast(`✅ 受注${newOrders.length}件を登録しました`);
+    showToast(`✅ 受注${mainItems.length}品目を登録しました`);
   }catch(e){setSaveStatus('error','保存エラー');showToast('❌ 保存エラー: '+e.message);}
 }
 
