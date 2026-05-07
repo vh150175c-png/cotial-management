@@ -231,7 +231,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
       </div>
       <div class="card" style="margin-bottom:0">
         <div class="card-header"><span class="card-title" id="ord-count-label">受注一覧</span></div>
-        <table><thead><tr><th>受注番号</th><th>得意先</th><th>商品</th><th>数量</th><th>単価</th><th>金額</th><th>ステータス</th><th>受注日</th><th>納品日</th></tr></thead>
+        <table><thead><tr><th>受注番号</th><th>得意先</th><th>商品</th><th>数量</th><th>単価</th><th>金額</th><th>粗利率</th><th>ステータス</th><th>受注日</th><th>納品日</th></tr></thead>
         <tbody id="order-table"></tbody></table>
       </div>
     </div>
@@ -298,7 +298,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
 </div>
 
 <div class="modal-overlay" id="modal-new-customer">
-  <div class="modal">
+  <div class="modal" style="width:700px">
     <div class="modal-header"><span class="modal-title" id="customer-modal-title">得意先追加</span><button class="close-btn" onclick="closeModal('new-customer')">×</button></div>
     <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr">
       <div class="fg" style="grid-column:1/-1"><label class="fl">得意先正式名称 *</label><input type="text" id="nc-name" placeholder="株式会社〇〇"></div>
@@ -313,9 +313,26 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
       <div class="fg"><label class="fl">ロット数</label><input type="text" id="nc-lot" placeholder="20"></div>
       <div class="fg"><label class="fl">納品方法</label>
         <select id="nc-delivery"><option>ヤマト便</option><option>直接配送</option><option>自社配送</option></select></div>
-      <div class="fg"><label class="fl">電話番号</label><input type="text" id="nc-tel" placeholder="090-0000-0000"></div>
+      <div class="fg"><label class="fl">電話番号</label><input type="text" id="nc-tel" placeholder="03-1234-5678"></div>
       <div class="fg"><label class="fl">メールアドレス</label><input type="email" id="nc-email" placeholder="example@email.com"></div>
       <div class="fg"><label class="fl">連絡手段</label><input type="text" id="nc-contactmethod" placeholder="LINE / メール 等"></div>
+
+      <!-- 得意先住所 -->
+      <div style="grid-column:1/-1;font-size:11px;font-weight:500;color:#666;padding-top:4px;border-top:0.5px solid #e0ddd6;margin-top:4px">📍 得意先住所</div>
+      <div class="fg"><label class="fl">郵便番号</label><input type="text" id="nc-postal" placeholder="123-4567"></div>
+      <div class="fg" style="grid-column:2/-1"><label class="fl">住所</label><input type="text" id="nc-address" placeholder="〇〇県〇〇市〇〇町1-2-3"></div>
+
+      <!-- 納品先住所 -->
+      <div style="grid-column:1/-1;font-size:11px;font-weight:500;color:#666;padding-top:4px;border-top:0.5px solid #e0ddd6;margin-top:4px;display:flex;align-items:center;gap:10px">
+        📦 納品先住所
+        <label style="font-weight:400;font-size:11px;color:#185FA5;cursor:pointer;display:flex;align-items:center;gap:4px">
+          <input type="checkbox" id="nc-same-address" onchange="toggleSameAddress()" style="width:auto">
+          得意先住所と同じ
+        </label>
+      </div>
+      <div class="fg"><label class="fl">納品先郵便番号</label><input type="text" id="nc-delivery-postal" placeholder="123-4567"></div>
+      <div class="fg" style="grid-column:2/-1"><label class="fl">納品先住所</label><input type="text" id="nc-delivery-address" placeholder="〇〇県〇〇市〇〇町1-2-3"></div>
+
       <div class="fg" style="grid-column:1/-1"><label class="fl">備考・メモ</label><textarea id="nc-memo" rows="2" placeholder="特記事項など"></textarea></div>
     </div>
     <input type="hidden" id="nc-edit-id">
@@ -406,7 +423,12 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
   <div class="modal" style="width:680px">
     <div class="modal-header"><span class="modal-title">新規受注登録</span><button class="close-btn" onclick="closeModal('new-order')">×</button></div>
     <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr">
-      <div class="fg" style="grid-column:1/-1"><label class="fl">得意先 *</label><select id="no-customer"></select></div>
+      <div class="fg" style="grid-column:1/-1">
+        <label class="fl">得意先 *</label>
+        <input type="text" id="no-customer-search" placeholder="🔍 得意先名で検索..." oninput="filterCustomerList()" style="margin-bottom:4px">
+        <select id="no-customer" size="4" style="height:80px" onchange="onCustomerSelect()"></select>
+        <div id="no-customer-info" style="font-size:10px;color:#185FA5;margin-top:3px"></div>
+      </div>
       <div class="fg"><label class="fl">受注日 *</label><input type="date" id="no-date"></div>
       <div class="fg"><label class="fl">納品日</label><input type="date" id="no-delivery-date"></div>
       <div class="fg"><label class="fl">備考</label><input type="text" id="no-memo" placeholder="配送メモなど"></div>
@@ -656,9 +678,11 @@ function openCustomerDetail(id){
         <span class="di-label">納品方法</span><span>${c.delivery||'-'}</span>
       </div></div>
       <div><div class="detail-grid">
-        <span class="di-label">電話番号</span><span>${c.tel||'-'}</span>
+        <span class="di-label">電話番号</span><span>${c.tel||c.phone||'-'}</span>
         <span class="di-label">メール</span><span style="font-size:10px;word-break:break-all">${c.email||'-'}</span>
         <span class="di-label">連絡手段</span><span>${c.contact_method||'-'}</span>
+        <span class="di-label">得意先住所</span><span>${c.postal_code?'〒'+c.postal_code+' ':''} ${c.address||'-'}</span>
+        <span class="di-label">納品先住所</span><span>${c.delivery_postal_code?'〒'+c.delivery_postal_code+' ':''} ${c.delivery_address||'（得意先住所と同じ）'}</span>
         <span class="di-label">備考</span><span style="font-size:11px">${c.memo||'-'}</span>
       </div></div>
     </div>
@@ -676,9 +700,20 @@ function openCustomerDetail(id){
   openModal('customer-detail');
 }
 
+function toggleSameAddress(){
+  const same=document.getElementById('nc-same-address').checked;
+  document.getElementById('nc-delivery-postal').value=same?document.getElementById('nc-postal').value:'';
+  document.getElementById('nc-delivery-address').value=same?document.getElementById('nc-address').value:'';
+  document.getElementById('nc-delivery-postal').disabled=same;
+  document.getElementById('nc-delivery-address').disabled=same;
+}
+
 function openNewCustomerModal(){
   document.getElementById('customer-modal-title').textContent='得意先追加';
-  ['nc-name','nc-contact','nc-firstorder','nc-tel','nc-email','nc-contactmethod','nc-memo','nc-lot','nc-price-drink','nc-price-goods'].forEach(id=>{document.getElementById(id).value='';});
+  ['nc-name','nc-contact','nc-firstorder','nc-tel','nc-email','nc-contactmethod','nc-memo','nc-lot','nc-price-drink','nc-price-goods','nc-postal','nc-address','nc-delivery-postal','nc-delivery-address'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('nc-same-address').checked=false;
+  document.getElementById('nc-delivery-postal').disabled=false;
+  document.getElementById('nc-delivery-address').disabled=false;
   document.getElementById('nc-edit-id').value='';
   openModal('new-customer');
 }
@@ -697,7 +732,14 @@ function openEditCustomer(id){
   document.getElementById('nc-tel').value=c.tel||'';
   document.getElementById('nc-email').value=c.email||'';
   document.getElementById('nc-contactmethod').value=c.contact_method||'';
+  document.getElementById('nc-postal').value=c.postal_code||'';
+  document.getElementById('nc-address').value=c.address||'';
+  document.getElementById('nc-delivery-postal').value=c.delivery_postal_code||'';
+  document.getElementById('nc-delivery-address').value=c.delivery_address||'';
   document.getElementById('nc-memo').value=c.memo||'';
+  document.getElementById('nc-same-address').checked=false;
+  document.getElementById('nc-delivery-postal').disabled=false;
+  document.getElementById('nc-delivery-address').disabled=false;
   document.getElementById('nc-edit-id').value=id;
   openModal('new-customer');
 }
@@ -705,7 +747,7 @@ async function saveCustomer(){
   const name=document.getElementById('nc-name').value.trim();
   if(!name){alert('得意先名を入力してください');return;}
   const editId=document.getElementById('nc-edit-id').value;
-  const data={name,contact:document.getElementById('nc-contact').value,first_order:document.getElementById('nc-firstorder').value,industry:document.getElementById('nc-industry').value,trade_type:document.getElementById('nc-tradetype').value,price_drink:parseInt(document.getElementById('nc-price-drink').value)||null,price_goods:parseInt(document.getElementById('nc-price-goods').value)||null,lot:document.getElementById('nc-lot').value,delivery:document.getElementById('nc-delivery').value,tel:document.getElementById('nc-tel').value,email:document.getElementById('nc-email').value,contact_method:document.getElementById('nc-contactmethod').value,memo:document.getElementById('nc-memo').value};
+  const data={name,contact:document.getElementById('nc-contact').value,first_order:document.getElementById('nc-firstorder').value,industry:document.getElementById('nc-industry').value,trade_type:document.getElementById('nc-tradetype').value,price_drink:parseInt(document.getElementById('nc-price-drink').value)||null,price_goods:parseInt(document.getElementById('nc-price-goods').value)||null,lot:document.getElementById('nc-lot').value,delivery:document.getElementById('nc-delivery').value,tel:document.getElementById('nc-tel').value,email:document.getElementById('nc-email').value,contact_method:document.getElementById('nc-contactmethod').value,postal_code:document.getElementById('nc-postal').value,address:document.getElementById('nc-address').value,delivery_postal_code:document.getElementById('nc-delivery-postal').value,delivery_address:document.getElementById('nc-delivery-address').value,memo:document.getElementById('nc-memo').value};
   setSaveStatus('saving','保存中...');
   try{
     if(editId){
@@ -884,7 +926,24 @@ function renderOrders(){
   const fc=document.getElementById('ord-cust-filter').value,fm=document.getElementById('ord-month-filter').value;
   const list=orders.filter(o=>(!fc||o.customer_id===fc)&&(!fm||yyyymm(o.date)===fm));
   document.getElementById('ord-count-label').textContent=`受注一覧（${list.length}件）`;
-  document.getElementById('order-table').innerHTML=list.length?list.map(o=>`<tr><td style="color:#185FA5;font-weight:500">${o.id}</td><td>${custName(o.customer_id)}</td><td style="font-size:10px">${prodName(o.product_id)}</td><td style="text-align:right">${o.qty}</td><td style="text-align:right">${fmt(o.price)}</td><td style="text-align:right;font-weight:500">${fmt(orderAmt(o))}</td><td><span class="badge bs">受注済み</span></td><td style="color:#999">${o.date}</td><td style="color:#185FA5">${o.delivery_date||'-'}</td></tr>`).join(''):`<tr><td colspan="9" class="empty-state">受注データがありません</td></tr>`;
+  document.getElementById('order-table').innerHTML=list.length?list.map(o=>{
+    const p=products.find(x=>x.id===o.product_id);
+    const cost=p&&p.cost?p.cost:null;
+    const marginRate=cost&&o.price?Math.round((o.price-cost)/o.price*100):null;
+    const marginColor=marginRate===null?'#999':marginRate>=40?'#3B6D11':marginRate>=20?'#854F0B':'#A32D2D';
+    return`<tr>
+      <td style="color:#185FA5;font-weight:500">${o.id}</td>
+      <td>${custName(o.customer_id)}</td>
+      <td style="font-size:10px">${prodName(o.product_id)}</td>
+      <td style="text-align:right">${o.qty}</td>
+      <td style="text-align:right">${fmt(o.price)}</td>
+      <td style="text-align:right;font-weight:500">${fmt(orderAmt(o))}</td>
+      <td style="text-align:right;font-size:10px;color:${marginColor}">${marginRate!==null?marginRate+'%':'-'}</td>
+      <td><span class="badge bs">受注済み</span></td>
+      <td style="color:#999">${o.date}</td>
+      <td style="color:#185FA5">${o.delivery_date||'-'}</td>
+    </tr>`;
+  }).join(''):`<tr><td colspan="10" class="empty-state">受注データがありません</td></tr>`;
 }
 // ギフトセット定義
 const GIFT_FLAVORS=['夕凪のマーメイド','蒼炎のドラゴン','逆光のドワーフ','星夜のユニコーン'];
@@ -1057,9 +1116,31 @@ function updateOrderTotal(){
   document.getElementById('no-total').textContent=mainItems.length?`合計金額: ${fmt(total)}（${mainItems.length}品目）`:'';
 }
 
+function filterCustomerList(){
+  const q=(document.getElementById('no-customer-search').value||'').toLowerCase();
+  const filtered=q?customers.filter(c=>c.name.toLowerCase().includes(q)||(c.contact||'').toLowerCase().includes(q)):customers;
+  document.getElementById('no-customer').innerHTML=filtered.map(c=>`<option value="${c.id}">${c.no?c.no+'. ':''} ${c.name}　${c.contact||''}</option>`).join('');
+  if(filtered.length>0)onCustomerSelect();
+}
+function onCustomerSelect(){
+  const id=document.getElementById('no-customer').value;
+  const c=customers.find(x=>x.id===id);
+  if(c){
+    const info=[];
+    if(c.tel)info.push(`📞 ${c.tel}`);
+    if(c.email)info.push(`✉️ ${c.email}`);
+    if(c.address)info.push(`📍 ${c.address}`);
+    document.getElementById('no-customer-info').textContent=info.join('　');
+  }else{
+    document.getElementById('no-customer-info').textContent='';
+  }
+}
+
 function openNewOrderModal(){
   orderItems=[];
-  document.getElementById('no-customer').innerHTML='<option value="">選択してください</option>'+customers.map(c=>`<option value="${c.id}">${c.no?c.no+'. ':''} ${c.name}</option>`).join('');
+  document.getElementById('no-customer-search').value='';
+  document.getElementById('no-customer').innerHTML=customers.map(c=>`<option value="${c.id}">${c.no?c.no+'. ':''} ${c.name}　${c.contact||''}</option>`).join('');
+  document.getElementById('no-customer-info').textContent='';
   const d=new Date();
   document.getElementById('no-date').value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   document.getElementById('no-delivery-date').value='';
