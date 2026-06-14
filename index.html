@@ -316,7 +316,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
       </div>
 
       <div class="card">
-        <div class="card-header"><span class="card-title">⚙ 設定</span></div>
+        <div class="card-header">
+          <span class="card-title">⚙ 設定</span>
+          <button onclick="initPlan()" style="background:#5a7a5a;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:11px;cursor:pointer;margin-left:auto">🔄 最新の在庫を取得</button>
+        </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;font-size:12px">
           <div>
             <label style="display:block;margin-bottom:6px;color:#666">基準日(計算の基準点)</label>
@@ -1476,11 +1479,16 @@ function renderStockFlow(){
 }
 
 // ===== 製造計画 =====
-function initPlan(){
+async function initPlan(){
   const d=document.getElementById('plan-base-date');
   if(!d.value){
     const t=new Date();d.value=t.toISOString().substring(0,10);
   }
+  // 最新の在庫を取りに行く(他人が変更してたり、別タブで更新された場合に備えて)
+  try{
+    const {data:pd,error:pe}=await sb.from('products').select('*');
+    if(!pe&&pd){products=pd;}
+  }catch(e){/* オフライン等は無視して既存データで描画 */}
   renderPlan();
 }
 function _addMonths(ymd,delta){
@@ -1612,7 +1620,7 @@ function showPage(id,el){
   if(id==='sales')renderSalesMonthly();
   if(id==='plan')initPlan();
 }
-function renderAll(){renderDashboard();renderProductTable();renderInventory();renderOrders();renderCustomers();renderSalesMonthly();initOrderFilters();}
+function renderAll(){renderDashboard();renderProductTable();renderInventory();renderOrders();renderCustomers();renderSalesMonthly();initOrderFilters();if(document.getElementById('page-plan')&&document.getElementById('page-plan').classList.contains('active'))renderPlan();}
 
 // ===== BOOT =====
 (async()=>{
