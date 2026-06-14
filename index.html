@@ -234,7 +234,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
       </div>
       <div class="card" style="margin-bottom:0">
         <div class="card-header"><span class="card-title" id="ord-count-label">受注一覧</span></div>
-        <table><thead><tr><th>受注番号</th><th>得意先</th><th>商品</th><th>数量</th><th>単価</th><th>金額</th><th>粗利率</th><th>ステータス</th><th>受注日</th><th>納品日</th></tr></thead>
+        <table><thead><tr><th>受注番号</th><th>得意先</th><th>商品</th><th>数量</th><th>単価</th><th>金額</th><th>粗利率</th><th>ステータス</th><th>受注日</th><th>納品日</th><th></th></tr></thead>
         <tbody id="order-table"></tbody></table>
       </div>
     </div>
@@ -961,6 +961,43 @@ async function deleteProduct(id){
     initFilters();renderAll();showToast('🗑️ 商品を削除しました');
   }catch(e){setSaveStatus('error','保存エラー');showToast('❌ 削除エラー: '+e.message);}
 }
+function confirmDeleteOrder(id){
+  const o=orders.find(x=>x.id===id);
+  if(!o)return;
+  const cName=custName(o.customer_id);
+  const pName=prodName(o.product_id);
+  const msg=`以下の受注を削除しますか？\n\n受注番号: ${o.id}\n得意先: ${cName}\n商品: ${pName}\n数量: ${o.qty}個\n受注日: ${o.date}\n\n※削除すると、この受注で減らした在庫(${o.qty}個)は商品在庫に戻ります。\n※この操作は取り消せません。`;
+  if(!confirm(msg))return;
+  authThen(()=>doDeleteOrder(id),'受注削除');
+}
+async function doDeleteOrder(id){
+  const o=orders.find(x=>x.id===id);
+  if(!o)return;
+  setSaveStatus('saving','削除中...');
+  try{
+    // 在庫戻し(価格0=過去取込分でなければ戻す。SO-Hで始まる過去取込は在庫戻し不要)
+    const restoreStock = !o.id.startsWith('SO-H');
+    if(restoreStock){
+      const p=products.find(x=>x.id===o.product_id);
+      if(p){
+        const newStock=(p.stock||0)+o.qty;
+        const {error:se}=await sb.from('products').update({stock:newStock}).eq('id',o.product_id);
+        if(se)throw se;
+        p.stock=newStock;
+        await sb.from('stock_logs').insert({product_id:o.product_id,type:'add',qty:o.qty,note:`受注削除による戻し (${o.id})`});
+      }
+    }
+    const {error}=await sb.from('orders').delete().eq('id',id);
+    if(error)throw error;
+    orders=orders.filter(x=>x.id!==id);
+    setSaveStatus('ok','保存済み');
+    renderAll();
+    showToast(restoreStock?`🗑 受注を削除しました(在庫を${o.qty}個戻しました)`:'🗑 受注を削除しました');
+  }catch(e){
+    setSaveStatus('error','削除エラー');
+    showToast('❌ 削除エラー: '+e.message);
+  }
+}
 function renderInventory(){
   document.getElementById('inv-table').innerHTML=products.map(p=>{const pct=Math.min(Math.round((p.stock||0)/Math.max(p.stock||0,200)*100),100);const color=(p.stock||0)===0?'#E24B4A':(p.stock||0)<20?'#BA7517':'#185FA5';return`<tr><td style="font-size:10px;color:#999;white-space:nowrap">${p.id}</td><td>${fDot(p.flavor)} ${p.flavor}</td><td>${p.vol}ml</td><td><span class="badge bg">${p.pouch}</span></td><td style="font-size:10px;color:#999">${(p.maker||'').replace('株式会社','(株)').replace('センター','C.')}</td><td style="text-align:right;font-weight:500;${(p.stock||0)===0?'color:#A32D2D':''}">${p.stock||0}</td><td class="${expStatus(p.exp)==='past'?'expiry-past':expStatus(p.exp)==='soon'?'expiry-warn':'expiry-ok'}">${p.exp||'-'}</td><td><div style="display:flex;align-items:center;gap:6px"><div class="progress" style="flex:1"><div class="progress-bar" style="width:${pct}%;background:${color}"></div></div>${stockBadge(p.stock||0)}</div></td></tr>`;}).join('');
 }
@@ -1015,8 +1052,9 @@ function renderOrders(){
       <td><span class="badge bs">受注済み</span></td>
       <td style="color:#999">${o.date}</td>
       <td style="color:#185FA5">${o.delivery_date||'-'}</td>
+      <td style="text-align:center"><button onclick="confirmDeleteOrder('${o.id}')" style="background:none;border:none;color:#A32D2D;cursor:pointer;font-size:14px;padding:2px 6px" title="削除">🗑</button></td>
     </tr>`;
-  }).join(''):`<tr><td colspan="10" class="empty-state">受注データがありません</td></tr>`;
+  }).join(''):`<tr><td colspan="11" class="empty-state">受注データがありません</td></tr>`;
 }
 // ギフトセット定義
 const GIFT_FLAVORS=['夕凪のマーメイド','蒼炎のドラゴン','逆光のドワーフ','星夜のユニコーン'];
