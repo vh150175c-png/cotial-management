@@ -127,6 +127,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
     <div class="nav-item" onclick="showPage('sales',this)">
       <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M1 11L4 6l2.5 2.5L9 4l4 5H1z"/></svg>売上管理
     </div>
+    <div class="nav-item" onclick="showPage('plan',this)">
+      <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M2 1h10v2H2V1zm0 4h10v2H2V5zm0 4h10v2H2V9zm0 4h7v1H2v-1z"/><circle cx="11.5" cy="12" r="1.5" fill="#fff" stroke="currentColor" stroke-width="0.8"/></svg>製造計画
+    </div>
   </div>
   <div class="save-status">
     <div class="save-dot" id="save-dot"></div>
@@ -243,6 +246,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
           <div class="tab active" onclick="switchSalesTab('monthly',this)">月別実績</div>
           <div class="tab" onclick="switchSalesTab('customer',this)">得意先別実績</div>
           <div class="tab" onclick="switchSalesTab('product',this)">商品別実績</div>
+          <div class="tab" onclick="switchSalesTab('stockflow',this)">月別出荷数</div>
         </div>
         <button class="btn btn-green btn-sm" onclick="exportCSV('sales')" style="margin-bottom:2px">📥 売上CSV</button>
       </div>
@@ -283,11 +287,73 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
           <table><thead><tr><th>順位</th><th>商品</th><th>容量</th><th>パウチ</th><th>数量</th><th>売上</th><th>構成比</th></tr></thead><tbody id="s-product"></tbody></table>
         </div>
       </div>
+      <div id="sales-tab-stockflow" style="display:none">
+        <div class="filters">
+          <select class="filter-select" id="sf-year" onchange="renderStockFlow()"></select>
+          <select class="filter-select" id="sf-group" onchange="renderStockFlow()">
+            <option value="flavor_vol">フレーバー×容量別</option>
+            <option value="flavor">フレーバー別</option>
+            <option value="vol">容量別</option>
+          </select>
+          <span style="font-size:10px;color:#999;margin-left:auto">※ 受注による出荷数（在庫減少数）の月別集計</span>
+        </div>
+        <div class="card" style="margin-bottom:0">
+          <div class="card-header"><span class="card-title">月別出荷数（在庫減少数）</span></div>
+          <div style="overflow-x:auto">
+            <table id="sf-table" style="font-size:11px"></table>
+          </div>
+        </div>
+      </div>
     </div>
 
-  </div>
-</div>
-</div>
+    <div class="page" id="page-plan">
+      <div class="card" style="background:#fffaf0;border-color:#f0d9a8">
+        <div class="card-header"><span class="card-title">📊 製造計画のシミュレーター</span></div>
+        <div style="font-size:12px;line-height:1.8;color:#666">
+          過去実績から次回の製造数を考えるための画面です。直近3ヶ月の平均、前年同時期、全期間平均など、複数の指標を並べて確認できます。<br>
+          <b style="color:#A85B0B">推奨製造数はあくまで参考値です。</b>市場の動きや出店予定、新規取引先などを加味して大樹さんが最終判断してください。
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">⚙ 設定</span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;font-size:12px">
+          <div>
+            <label style="display:block;margin-bottom:6px;color:#666">基準日(計算の基準点)</label>
+            <input type="date" id="plan-base-date" onchange="renderPlan()" style="padding:8px;border:1px solid #ddd;border-radius:6px;width:100%;font-size:12px">
+          </div>
+          <div>
+            <label style="display:block;margin-bottom:6px;color:#666">製造期間(何ヶ月で売り切るか)</label>
+            <input type="number" id="plan-months" value="5" min="1" max="12" onchange="renderPlan()" style="padding:8px;border:1px solid #ddd;border-radius:6px;width:100%;font-size:12px">
+          </div>
+          <div>
+            <label style="display:block;margin-bottom:6px;color:#666">安全係数(余裕分の倍率)</label>
+            <input type="number" id="plan-safety" value="1.2" min="1.0" max="2.0" step="0.1" onchange="renderPlan()" style="padding:8px;border:1px solid #ddd;border-radius:6px;width:100%;font-size:12px">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">📦 フレーバー×容量別 製造数の見立て</span></div>
+        <div style="overflow-x:auto">
+          <table id="plan-table" style="font-size:11px;width:100%"></table>
+        </div>
+        <div style="font-size:11px;color:#888;margin-top:12px;line-height:1.7">
+          <b>列の見方</b>:<br>
+          <b>直近3ヶ月平均</b> = 基準日の直前3ヶ月の月平均出荷数(短期トレンド)<br>
+          <b>前年同時期</b> = 基準日の翌月を中心に前年±1ヶ月の月平均(季節性のチェック)<br>
+          <b>全期間平均</b> = 取引開始から基準日までの月平均(参考)<br>
+          <b>振れ幅</b> = 全期間の月別最大〜最小(変動の大きさを把握)<br>
+          <b>推奨製造数</b> = 直近3ヶ月平均と前年同時期平均の大きい方 × 製造期間 × 安全係数<br>
+          <b>在庫残日数</b> = 現在の在庫が直近3ヶ月平均ペースであと何日もつか
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">📈 月別出荷推移(過去12ヶ月)</span></div>
+        <div id="plan-charts" style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px"></div>
+      </div>
+    </div>
 
 <!-- MODALS -->
 <div class="modal-overlay" id="modal-customer-detail">
@@ -307,7 +373,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
       <div class="fg"><label class="fl">業種</label>
         <select id="nc-industry"><option>小売(食品)</option><option>小売(雑貨)</option><option>飲食</option><option>サロン</option><option>ホテル</option><option>道の駅</option><option>EC</option><option>物販</option><option>その他</option></select></div>
       <div class="fg"><label class="fl">取扱形態</label>
-        <select id="nc-tradetype"><option>卸飲料・物販</option><option>卸物販</option><option>卸飲料</option><option>委託物販</option><option>EC卸販売</option></select></div>
+        <select id="nc-tradetype"><option>卸飲料・物販</option><option>卸物販</option><option>卸飲料</option><option>委託物販</option><option>EC卸販売</option><option>自社EC</option><option>出店</option></select></div>
       <div class="fg"><label class="fl">飲料卸価格 (円)</label><input type="number" id="nc-price-drink" placeholder="1084"></div>
       <div class="fg"><label class="fl">物販卸価格 (円)</label><input type="number" id="nc-price-goods" placeholder="1185"></div>
       <div class="fg"><label class="fl">ロット数</label><input type="text" id="nc-lot" placeholder="20"></div>
@@ -549,7 +615,7 @@ document.getElementById('today-label').textContent=`${todayDate.getFullYear()}�
 function fmt(n){return'¥'+Number(n).toLocaleString();}
 function fDot(f){return`<span class="flavor-dot" style="background:${FLAVOR_COLOR[f]||'#888'}"></span>`;}
 function industryBadge(ind){const color=INDUSTRY_COLOR[ind]||'#5F5E5A';return`<span class="badge" style="background:${color}22;color:${color}">${ind}</span>`;}
-function tradeTypeBadge(t){const m={'卸飲料・物販':'bi','卸物販':'bs','卸飲料':'bw','委託物販':'bg','EC卸販売':'bv'};return`<span class="badge ${m[t]||'bg'}">${t}</span>`;}
+function tradeTypeBadge(t){const m={'卸飲料・物販':'bi','卸物販':'bs','卸飲料':'bw','委託物販':'bg','EC卸販売':'bv','自社EC':'bp','出店':'bd'};return`<span class="badge ${m[t]||'bg'}">${t}</span>`;}
 function parseExp(s){if(!s)return null;const p=s.split('/');return new Date(p[0],p[1]-1,p[2]);}
 function expStatus(s){const d=parseExp(s);if(!d)return'none';const diff=Math.floor((d-todayDate)/86400000);return diff<0?'past':diff<=30?'soon':'ok';}
 function expBadge(s){const st=expStatus(s);if(st==='past')return`<span class="badge bd">期限切れ</span>`;if(st==='soon')return`<span class="badge bw">期限間近</span>`;if(st==='none')return`<span class="badge bg">-</span>`;return`<span class="badge bs">正常</span>`;}
@@ -565,7 +631,7 @@ function setSaveStatus(state,text){const dot=document.getElementById('save-dot')
 async function loadAll(){
   try{
     document.getElementById('loading-msg').textContent='得意先データを読込中...';
-    const {data:cd,error:ce}=await sb.from('customers').select('*').order('no');
+    const {data:cd,error:ce}=await sb.from('customers').select('*').order('no').limit(5000);
     if(ce)throw ce;
     if(cd&&cd.length>0){customers=cd;}
     else{
@@ -576,7 +642,7 @@ async function loadAll(){
     }
 
     document.getElementById('loading-msg').textContent='製品データを読込中...';
-    const {data:pd,error:pe}=await sb.from('products').select('*');
+    const {data:pd,error:pe}=await sb.from('products').select('*').limit(5000);
     if(pe)throw pe;
     if(pd&&pd.length>0){products=pd;}
     else{
@@ -586,9 +652,16 @@ async function loadAll(){
     }
 
     document.getElementById('loading-msg').textContent='受注データを読込中...';
-    const {data:od,error:oe}=await sb.from('orders').select('*').order('date',{ascending:false});
-    if(oe)throw oe;
-    orders=od||[];
+    orders=[];
+    let oFrom=0;const oStep=1000;
+    while(true){
+      const {data:od,error:oe}=await sb.from('orders').select('*').order('date',{ascending:false}).range(oFrom,oFrom+oStep-1);
+      if(oe)throw oe;
+      if(!od||od.length===0)break;
+      orders=orders.concat(od);
+      if(od.length<oStep)break;
+      oFrom+=oStep;
+    }
     if(orders.length>0){
       const maxNum=Math.max(...orders.map(o=>parseInt(o.id.replace('SO-',''))||0));
       orderSeq=maxNum+1;
@@ -947,7 +1020,7 @@ function renderOrders(){
 }
 // ギフトセット定義
 const GIFT_FLAVORS=['夕凪のマーメイド','蒼炎のドラゴン','逆光のドワーフ','星夜のユニコーン'];
-function get50mlByFlavor(flavor){return products.filter(p=>p.flavor===flavor&&String(p.vol)==='50');}
+function get50mlByFlavor(flavor){return products.filter(p=>p.flavor===flavor&&String(p.vol)==='50'&&(p.stock||0)>0);}
 
 // 受注明細アイテム管理
 let orderItems=[];
@@ -982,7 +1055,7 @@ function renderOrderItems(){
       // 選択中フレーバーの容量一覧
       const vols=[...new Set(products.filter(q=>q.flavor===selectedFlavor).map(q=>String(q.vol)))].sort((a,b)=>Number(a)-Number(b));
       // 選択中フレーバー＋容量のロット一覧
-      const lots=products.filter(q=>q.flavor===selectedFlavor&&String(q.vol)===selectedVol);
+      const lots=products.filter(q=>q.flavor===selectedFlavor&&String(q.vol)===selectedVol&&((q.stock||0)>0||q.id===item.productId));
       return`<div style="margin-bottom:10px;padding:10px;background:#f5f4f0;border-radius:6px">
         <div style="display:grid;grid-template-columns:1fr 90px 1fr;gap:8px;margin-bottom:8px">
           <div class="fg" style="margin:0">
@@ -1051,7 +1124,7 @@ function onItemFlavorChange(i,flavor){
 
 function onItemVolChange(i,vol){
   const flavor=orderItems[i].selectedFlavor;
-  const lots=products.filter(p=>p.flavor===flavor&&String(p.vol)===vol);
+  const lots=products.filter(p=>p.flavor===flavor&&String(p.vol)===vol&&(p.stock||0)>0);
   const first=lots[0];
   orderItems[i]={...orderItems[i],productId:first?first.id:'',selectedVol:vol,price:first?first.price||0:0};
   renderOrderItems();
@@ -1210,8 +1283,8 @@ async function addOrder(){
 // ===== SALES =====
 function switchSalesTab(tab,el){
   document.querySelectorAll('.tab-nav .tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');
-  ['monthly','customer','product'].forEach(t=>document.getElementById('sales-tab-'+t).style.display=t===tab?'block':'none');
-  if(tab==='monthly')renderSalesMonthly();if(tab==='customer')renderSalesCustomer();if(tab==='product')renderSalesProduct();
+  ['monthly','customer','product','stockflow'].forEach(t=>document.getElementById('sales-tab-'+t).style.display=t===tab?'block':'none');
+  if(tab==='monthly')renderSalesMonthly();if(tab==='customer')renderSalesCustomer();if(tab==='product')renderSalesProduct();if(tab==='stockflow')initStockFlow();
 }
 function renderSalesMonthly(){
   const bm={};orders.forEach(o=>{const m=yyyymm(o.date);if(!m)return;if(!bm[m])bm[m]={cnt:0,amt:0};bm[m].cnt++;bm[m].amt+=orderAmt(o);});
@@ -1290,6 +1363,205 @@ function exportCSV(type){
   if(type==='all')setTimeout(()=>showToast('✅ 全4ファイルのダウンロード完了！'),2000);
 }
 
+// ===== 月別出荷数（在庫減少数）=====
+function initStockFlow(){
+  const years=[...new Set(orders.map(o=>(o.date||'').substring(0,4)).filter(Boolean))].sort().reverse();
+  const yearSel=document.getElementById('sf-year');
+  const current=yearSel.value;
+  yearSel.innerHTML='<option value="">全期間</option>'+years.map(y=>`<option value="${y}">${y}年</option>`).join('');
+  if(current&&[...yearSel.options].some(o=>o.value===current))yearSel.value=current;
+  renderStockFlow();
+}
+function renderStockFlow(){
+  const year=document.getElementById('sf-year').value;
+  const group=document.getElementById('sf-group').value;
+  const list=orders.filter(o=>!year||(o.date||'').startsWith(year));
+
+  // グループキー関数
+  function groupKey(o){
+    const p=products.find(x=>x.id===o.product_id);
+    if(!p)return '不明';
+    if(p.flavor==='トライアルギフトセット')return null; // ギフト本体は在庫減少なし
+    if(group==='flavor')return p.flavor;
+    if(group==='vol')return p.vol+'ml';
+    return `${p.flavor}|${p.vol}ml`;
+  }
+
+  // 月の一覧
+  const months=[...new Set(list.map(o=>yyyymm(o.date)).filter(Boolean))].sort();
+  if(!months.length){document.getElementById('sf-table').innerHTML='<tbody><tr><td class="empty-state">データがありません</td></tr></tbody>';return;}
+
+  // 集計: rows[key][month] = qty
+  const rows={};
+  list.forEach(o=>{
+    const key=groupKey(o);
+    if(!key)return;
+    const m=yyyymm(o.date);
+    if(!rows[key])rows[key]={};
+    rows[key][m]=(rows[key][m]||0)+o.qty;
+  });
+
+  const keys=Object.keys(rows).sort();
+
+  // ヘッダー
+  let html='<thead><tr><th style="white-space:nowrap;position:sticky;left:0;background:#fff">商品</th>';
+  months.forEach(m=>{html+=`<th style="text-align:right;white-space:nowrap">${m.slice(2).replace('-','/')}</th>`;});
+  html+='<th style="text-align:right;white-space:nowrap;font-weight:600">合計</th></tr></thead><tbody>';
+
+  // 行
+  keys.forEach(key=>{
+    const label=key.replace('|',' ');
+    const flavorName=key.split('|')[0];
+    const dotHtml=FLAVOR_COLOR[flavorName]?fDot(flavorName)+' ':'';
+    let total=0;
+    html+=`<tr><td style="white-space:nowrap;position:sticky;left:0;background:#fff">${dotHtml}${label}</td>`;
+    months.forEach(m=>{
+      const v=rows[key][m]||0;
+      total+=v;
+      html+=`<td style="text-align:right;${v===0?'color:#ddd':''}">${v||'-'}</td>`;
+    });
+    html+=`<td style="text-align:right;font-weight:600">${total}</td></tr>`;
+  });
+
+  // 月合計行
+  html+='<tr style="font-weight:600;border-top:2px solid #e0ddd6"><td style="position:sticky;left:0;background:#fff">月合計</td>';
+  let grandTotal=0;
+  months.forEach(m=>{
+    let mt=0;
+    keys.forEach(key=>{mt+=rows[key][m]||0;});
+    grandTotal+=mt;
+    html+=`<td style="text-align:right">${mt}</td>`;
+  });
+  html+=`<td style="text-align:right">${grandTotal}</td></tr>`;
+  html+='</tbody>';
+  document.getElementById('sf-table').innerHTML=html;
+}
+
+// ===== 製造計画 =====
+function initPlan(){
+  const d=document.getElementById('plan-base-date');
+  if(!d.value){
+    const t=new Date();d.value=t.toISOString().substring(0,10);
+  }
+  renderPlan();
+}
+function _addMonths(ymd,delta){
+  const d=new Date(ymd+'T00:00:00');d.setMonth(d.getMonth()+delta);
+  return d.toISOString().substring(0,7);
+}
+function _ymRange(startYM,endYM){ // inclusive both
+  const out=[];let[y,m]=startYM.split('-').map(Number);
+  const[ey,em]=endYM.split('-').map(Number);
+  while(y<ey||(y===ey&&m<=em)){out.push(`${y}-${String(m).padStart(2,'0')}`);m++;if(m>12){m=1;y++;}}
+  return out;
+}
+function _monthlyShipFor(flavor,vol){
+  // フレーバー×容量で月別合計(ギフトとトライアル本体は除外、それらの構成パウチは展開済み)
+  const targetPid=new Set(products.filter(p=>p.flavor===flavor&&String(p.vol)===String(vol)).map(p=>p.id));
+  const by={};
+  orders.forEach(o=>{
+    if(!targetPid.has(o.product_id))return;
+    const ym=yyyymm(o.date);if(!ym)return;
+    by[ym]=(by[ym]||0)+o.qty;
+  });
+  return by;
+}
+function _currentStock(flavor,vol){
+  return products.filter(p=>p.flavor===flavor&&String(p.vol)===String(vol)).reduce((s,p)=>s+(p.stock||0),0);
+}
+function renderPlan(){
+  const baseDate=document.getElementById('plan-base-date').value;
+  if(!baseDate){document.getElementById('plan-table').innerHTML='<tbody><tr><td>基準日を選択してください</td></tr></tbody>';return;}
+  const months=parseInt(document.getElementById('plan-months').value)||5;
+  const safety=parseFloat(document.getElementById('plan-safety').value)||1.2;
+  const baseYM=baseDate.substring(0,7);
+  // 直近3ヶ月: baseYMを含まずその前3ヶ月
+  const recent3=[_addMonths(baseDate,-3),_addMonths(baseDate,-2),_addMonths(baseDate,-1)].map(s=>s.substring(0,7));
+  // 前年同時期±1: 翌月を中心とした昨年(つまり baseDate+1ヶ月の-12ヶ月を中心に±1)
+  const center=_addMonths(baseDate,1-12);
+  const lastYear=[_addMonths(center+'-01',-1),center,_addMonths(center+'-01',1)].map(s=>s.substring(0,7));
+
+  const FLAVORS=['夕凪のマーメイド','蒼炎のドラゴン','逆光のドワーフ','星夜のユニコーン'];
+  const VOLS=['50','220'];
+
+  let html='<thead><tr>'
+    +'<th style="text-align:left;white-space:nowrap">商品</th>'
+    +'<th style="text-align:right;white-space:nowrap">現在庫</th>'
+    +'<th style="text-align:right;white-space:nowrap;background:#eef6ff" title="基準日の直前3ヶ月の月平均出荷数">直近3ヶ月平均</th>'
+    +'<th style="text-align:right;white-space:nowrap;background:#eef6ff" title="前年の同時期±1ヶ月の月平均">前年同時期平均</th>'
+    +'<th style="text-align:right;white-space:nowrap" title="取引開始からの月平均">全期間平均</th>'
+    +'<th style="text-align:right;white-space:nowrap" title="月別出荷数の最大〜最小">振れ幅</th>'
+    +'<th style="text-align:right;white-space:nowrap" title="現在庫が直近平均ペースであと何日">在庫残日数</th>'
+    +'<th style="text-align:right;white-space:nowrap;background:#fff7e6;font-weight:600" title="参考値: 大きい方の平均 × 製造期間 × 安全係数">💡 推奨製造数</th>'
+    +'</tr></thead><tbody>';
+
+  FLAVORS.forEach(f=>{
+    VOLS.forEach(v=>{
+      const by=_monthlyShipFor(f,v);
+      const allMonths=Object.keys(by).sort();
+      if(allMonths.length===0){return;}
+      const stock=_currentStock(f,v);
+      const sum=arr=>arr.reduce((a,b)=>a+(by[b]||0),0);
+      const avg=arr=>arr.length?sum(arr)/arr.length:0;
+      const recentAvg=avg(recent3);
+      const lyAvg=avg(lastYear);
+      const allVals=allMonths.map(m=>by[m]);
+      const overall=allVals.reduce((a,b)=>a+b,0)/allVals.length;
+      const mx=Math.max(...allVals),mn=Math.min(...allVals);
+      const dayRate=recentAvg/30;
+      const daysLeft=dayRate>0?Math.round(stock/dayRate):null;
+      const baseForRec=Math.max(recentAvg,lyAvg);
+      const recommend=Math.round(baseForRec*months*safety);
+      const dotHtml=fDot(f);
+      const dayCls=daysLeft===null?'#999':daysLeft<30?'#A32D2D':daysLeft<60?'#854F0B':'#3B6D11';
+      const lyHasData=lastYear.some(m=>by[m]!==undefined);
+      html+=`<tr>
+        <td style="white-space:nowrap">${dotHtml} ${f} ${v}ml</td>
+        <td style="text-align:right;font-weight:500">${stock}</td>
+        <td style="text-align:right;background:#f8fbff">${recentAvg.toFixed(1)}</td>
+        <td style="text-align:right;background:#f8fbff;${lyHasData?'':'color:#bbb'}">${lyHasData?lyAvg.toFixed(1):'データなし'}</td>
+        <td style="text-align:right;color:#888">${overall.toFixed(1)}</td>
+        <td style="text-align:right;color:#888;font-size:10px">${mn}〜${mx}</td>
+        <td style="text-align:right;color:${dayCls};font-weight:500">${daysLeft===null?'-':daysLeft+'日'}</td>
+        <td style="text-align:right;background:#fff7e6;font-weight:600;font-size:13px;color:#A85B0B">${recommend}個</td>
+      </tr>`;
+    });
+  });
+  html+='</tbody>';
+  document.getElementById('plan-table').innerHTML=html;
+
+  // 月別推移チャート(過去12ヶ月)
+  const last12=[];
+  for(let i=11;i>=0;i--){last12.push(_addMonths(baseDate,-i).substring(0,7));}
+  let charts='';
+  FLAVORS.forEach(f=>{
+    VOLS.forEach(v=>{
+      const by=_monthlyShipFor(f,v);
+      const vals=last12.map(m=>by[m]||0);
+      const mx=Math.max(1,...vals);
+      const avgRec=(by[recent3[0]]||0)+(by[recent3[1]]||0)+(by[recent3[2]]||0);
+      const r=avgRec/3;
+      charts+=`<div style="border:1px solid #e0ddd6;border-radius:8px;padding:12px;background:#fff">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">${fDot(f)} ${f} ${v}ml <span style="font-size:10px;color:#888;font-weight:400">直近3ヶ月平均 ${r.toFixed(1)}個/月</span></div>
+        <div style="display:flex;align-items:flex-end;height:90px;gap:2px;border-bottom:1px solid #eee">
+          ${vals.map((val,i)=>{
+            const h=Math.round(val/mx*80);
+            const recent=i>=9;
+            return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end">
+              <div style="font-size:9px;color:#888;margin-bottom:2px">${val||''}</div>
+              <div style="width:100%;height:${h}px;background:${recent?'#185FA5':'#cfd8e0'};border-radius:2px 2px 0 0"></div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;gap:2px;margin-top:4px">
+          ${last12.map(m=>`<div style="flex:1;text-align:center;font-size:9px;color:#999">${m.substring(5)}</div>`).join('')}
+        </div>
+      </div>`;
+    });
+  });
+  document.getElementById('plan-charts').innerHTML=charts;
+}
+
 // ===== MODAL / PAGE =====
 function openModal(id){document.getElementById('modal-'+id).classList.add('open');}
 function closeModal(id){document.getElementById('modal-'+id).classList.remove('open');}
@@ -1297,9 +1569,10 @@ function showPage(id,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');el.classList.add('active');
-  const t={dashboard:'ダッシュボード',customers:'得意先管理',products:'製品マスタ',inventory:'在庫管理',orders:'受注管理',sales:'売上管理'};
+  const t={dashboard:'ダッシュボード',customers:'得意先管理',products:'製品マスタ',inventory:'在庫管理',orders:'受注管理',sales:'売上管理',plan:'製造計画'};
   document.getElementById('page-title').textContent=t[id];
   if(id==='sales')renderSalesMonthly();
+  if(id==='plan')initPlan();
 }
 function renderAll(){renderDashboard();renderProductTable();renderInventory();renderOrders();renderCustomers();renderSalesMonthly();initOrderFilters();}
 
