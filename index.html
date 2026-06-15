@@ -343,6 +343,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
         </div>
         <div style="font-size:11px;color:#888;margin-top:12px;line-height:1.7">
           <b>列の見方</b>:<br>
+          <b>現在庫</b> = 基準日時点で<b style="color:#A85B0B">賞味期限内</b>のロット合計(期限切れがあれば赤字で別表示)<br>
           <b>直近3ヶ月平均</b> = 基準日の直前3ヶ月の月平均出荷数(短期トレンド)<br>
           <b>前年同時期</b> = 基準日の翌月を中心に前年±1ヶ月の月平均(季節性のチェック)<br>
           <b>全期間平均</b> = 取引開始から基準日までの月平均(参考)<br>
@@ -1512,8 +1513,27 @@ function _monthlyShipFor(flavor,vol){
   });
   return by;
 }
-function _currentStock(flavor,vol){
-  return products.filter(p=>p.flavor===flavor&&String(p.vol)===String(vol)).reduce((s,p)=>s+(p.stock||0),0);
+function _currentStock(flavor,vol,baseDate){
+  // baseDate(YYYY-MM-DD)以降に賞味期限が残っているロットだけを集計
+  // baseDate未指定なら全部集計(後方互換)
+  return products.filter(p=>{
+    if(p.flavor!==flavor||String(p.vol)!==String(vol))return false;
+    if(!baseDate)return true;
+    if(!p.exp)return true; // 期限なしは含める
+    // p.exp は "2026/11/04" 形式
+    const expISO=p.exp.replace(/\//g,'-');
+    return expISO >= baseDate;
+  }).reduce((s,p)=>s+(p.stock||0),0);
+}
+function _expiredStock(flavor,vol,baseDate){
+  // 期限切れの在庫(参考表示用)
+  if(!baseDate)return 0;
+  return products.filter(p=>{
+    if(p.flavor!==flavor||String(p.vol)!==String(vol))return false;
+    if(!p.exp)return false;
+    const expISO=p.exp.replace(/\//g,'-');
+    return expISO < baseDate;
+  }).reduce((s,p)=>s+(p.stock||0),0);
 }
 function renderPlan(){
   const baseDate=document.getElementById('plan-base-date').value;
@@ -1546,7 +1566,8 @@ function renderPlan(){
       const by=_monthlyShipFor(f,v);
       const allMonths=Object.keys(by).sort();
       if(allMonths.length===0){return;}
-      const stock=_currentStock(f,v);
+      const stock=_currentStock(f,v,baseDate);
+      const expired=_expiredStock(f,v,baseDate);
       const sum=arr=>arr.reduce((a,b)=>a+(by[b]||0),0);
       const avg=arr=>arr.length?sum(arr)/arr.length:0;
       const recentAvg=avg(recent3);
@@ -1561,9 +1582,10 @@ function renderPlan(){
       const dotHtml=fDot(f);
       const dayCls=daysLeft===null?'#999':daysLeft<30?'#A32D2D':daysLeft<60?'#854F0B':'#3B6D11';
       const lyHasData=lastYear.some(m=>by[m]!==undefined);
+      const expiredNote=expired>0?`<div style="font-size:9px;color:#A32D2D;margin-top:2px">期限切れ${expired}個</div>`:'';
       html+=`<tr>
         <td style="white-space:nowrap">${dotHtml} ${f} ${v}ml</td>
-        <td style="text-align:right;font-weight:500">${stock}</td>
+        <td style="text-align:right;font-weight:500">${stock}${expiredNote}</td>
         <td style="text-align:right;background:#f8fbff">${recentAvg.toFixed(1)}</td>
         <td style="text-align:right;background:#f8fbff;${lyHasData?'':'color:#bbb'}">${lyHasData?lyAvg.toFixed(1):'データなし'}</td>
         <td style="text-align:right;color:#888">${overall.toFixed(1)}</td>
