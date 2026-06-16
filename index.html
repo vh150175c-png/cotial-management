@@ -1915,7 +1915,7 @@ async function runRecon(){
 }
 
 // ===== 棚卸し =====
-let stocktakeInputs={}; // pid → 現物数(文字列)
+window.stocktakeInputs={}; // pid → 現物数(文字列)
 
 async function initStocktake(){
   // 最新データ取得
@@ -1994,49 +1994,19 @@ function reviewStocktake(){
       entries.push({pid,name:`${p.flavor} ${p.vol}ml ${p.pouch||''} (期限${p.exp||'?'})`,before:p.stock||0,after:phys,diff:phys-(p.stock||0)});
     }
   }
-  if(entries.length===0){alert('変更が必要なロットがありません(全件入力なし or 全件一致)');return;}
-  // 確認モーダル
-  let body='<div style="font-size:13px;line-height:1.7;margin-bottom:14px">以下のロットの在庫を更新します。よろしいですか?</div>';
-  body+='<div style="max-height:380px;overflow-y:auto;border:1px solid #e0ddd6;border-radius:6px;padding:10px;background:#fdfcf8">';
+  if(entries.length===0){alert('変更が必要なロットがありません。\n(全件未入力 or 全件一致)');return;}
+  // 確認文を作成
+  let msg=`以下の${entries.length}件のロットの在庫を更新します:\n\n`;
   entries.forEach(e=>{
-    const diffColor=e.diff>0?'#3B6D11':'#A85B0B';
-    body+=`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0eee8;font-size:12px">
-      <div>${e.name}</div>
-      <div style="text-align:right">${e.before} → ${e.after} <span style="color:${diffColor};font-weight:600">(${e.diff>0?'+':''}${e.diff})</span></div>
-    </div>`;
+    msg+=`・${e.name}\n   ${e.before} → ${e.after} (${e.diff>0?'+':''}${e.diff})\n`;
   });
-  body+='</div>';
-  body+=`<div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end">
-    <button onclick="closeModal('stocktake-confirm')" style="background:#eee;color:#333;border:none;border-radius:6px;padding:8px 16px;cursor:pointer">キャンセル</button>
-    <button id="st-exec-btn" style="background:#A85B0B;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:600">📦 実行する</button>
-  </div>`;
-  // モーダルを動的に作成
-  let m=document.getElementById('modal-stocktake-confirm');
-  if(!m){
-    m=document.createElement('div');
-    m.id='modal-stocktake-confirm';
-    m.className='modal-overlay';
-    m.innerHTML=`<div class="modal" style="width:560px">
-      <div class="modal-header"><span class="modal-title">棚卸し確認 (${entries.length}件)</span><button class="close-btn" onclick="closeModal('stocktake-confirm')">×</button></div>
-      <div id="st-confirm-body"></div>
-    </div>`;
-    document.body.appendChild(m);
-  }
-  m.querySelector('.modal-title').textContent=`棚卸し確認 (${entries.length}件)`;
-  document.getElementById('st-confirm-body').innerHTML=body;
-  m.classList.add('active');
-  // 実行ボタンを認証付きでバインド
-  document.getElementById('st-exec-btn').onclick=()=>{
-    closeModal('stocktake-confirm');
-    authThen(()=>doStocktake(date,entries),'棚卸し');
-  };
+  msg+=`\n棚卸し日: ${date}\n\n実行しますか?`;
+  if(!confirm(msg))return;
+  // パスワード認証
+  authThen(()=>doStocktake(date,entries),'棚卸し');
 }
 
 async function doStocktake(date,entries){
-  closeModal('stocktake-confirm');
-  // 進捗表示
-  const btn=document.querySelector('#page-stocktake button[onclick="reviewStocktake()"]');
-  if(btn){btn.disabled=true;btn.textContent='処理中...';}
   try{
     for(const e of entries){
       // stock_logs に1本記録
@@ -2055,7 +2025,7 @@ async function doStocktake(date,entries){
     }
     // 完了
     alert(`✅ 棚卸し完了: ${entries.length}ロットの在庫を更新しました。`);
-    stocktakeInputs={};
+    window.stocktakeInputs={};
     // 再取得・再描画
     const{data:pd}=await sb.from('products').select('*');
     if(pd)products=pd;
@@ -2065,8 +2035,6 @@ async function doStocktake(date,entries){
     renderDashboard();
   }catch(e){
     alert('❌ エラー: '+e.message);
-  }finally{
-    if(btn){btn.disabled=false;btn.textContent='📦 棚卸しを実行';}
   }
 }
 
