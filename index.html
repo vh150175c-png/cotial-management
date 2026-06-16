@@ -133,6 +133,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
     <div class="nav-item" onclick="showPage('recon',this)">
       <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M2 2h10v10H2V2zm1 1v8h8V3H3z"/><path d="M4.5 7l1.5 1.5L9.5 5" stroke="currentColor" stroke-width="1" fill="none"/></svg>在庫検算
     </div>
+    <div class="nav-item" onclick="showPage('stocktake',this)">
+      <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M2 2h10v3H2V2zm0 4h10v3H2V6zm0 4h10v2H2v-2z" opacity="0.3"/><path d="M2 2h10v10H2V2zm1 1v8h8V3H3zm1 1.5h6v1H4v-1zm0 2.5h6v1H4v-1zm0 2.5h4v1H4v-1z"/></svg>棚卸し
+    </div>
   </div>
   <div class="save-status">
     <div class="save-dot" id="save-dot"></div>
@@ -380,6 +383,33 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
         <div class="card-header"><span class="card-title">📋 ロット別検算結果</span></div>
         <div style="overflow-x:auto">
           <table id="recon-table" style="font-size:11px;width:100%"></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="page-stocktake">
+      <div class="card" style="background:#fef9f0;border-color:#e8d8a0">
+        <div class="card-header"><span class="card-title">📦 棚卸しツール</span></div>
+        <div style="font-size:12px;line-height:1.8;color:#444">
+          現物を実際に数えて、各ロットの「現物数」欄に入力してください。<br>
+          <b>未入力(空欄)のロットは変更されません</b>。入力したロットだけが対象です。<br>
+          <b>受注・製造・返品の履歴はそのまま残ります</b>(売上分析などに引き続き使えます)。<br>
+          差は「棚卸し調整」のログとして1本記録されます。
+        </div>
+        <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:12px">棚卸し日:
+            <input type="date" id="st-date" style="margin-left:6px;padding:4px 8px;border:1px solid #ccc;border-radius:6px">
+          </label>
+          <label style="font-size:12px">
+            <input type="checkbox" id="st-show-zero" onchange="renderStocktake()"> 0個・履歴なしのロットも表示
+          </label>
+          <button onclick="reviewStocktake()" style="background:#A85B0B;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;cursor:pointer;font-weight:600;margin-left:auto">📦 棚卸しを実行</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">📋 ロット別 現物入力</span></div>
+        <div style="overflow-x:auto">
+          <table id="stocktake-table" style="font-size:12px;width:100%"></table>
         </div>
       </div>
     </div>
@@ -1884,6 +1914,162 @@ async function runRecon(){
   }
 }
 
+// ===== 棚卸し =====
+let stocktakeInputs={}; // pid → 現物数(文字列)
+
+async function initStocktake(){
+  // 最新データ取得
+  const {data:pd}=await sb.from('products').select('*');
+  if(pd)products=pd;
+  // 日付の初期値: 今日
+  const today=new Date();today.setHours(0,0,0,0);
+  const td=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  const dt=document.getElementById('st-date');
+  if(!dt.value)dt.value=td;
+  renderStocktake();
+}
+
+function renderStocktake(){
+  const showZero=document.getElementById('st-show-zero').checked;
+  // 商品をソート: 賞味期限の遅い順(現役→古い)、容量(50→220)、フレーバー順
+  const flavorOrder={'夕凪のマーメイド':1,'蒼炎のドラゴン':2,'逆光のドワーフ':3,'星夜のユニコーン':4};
+  const sorted=[...products].sort((a,b)=>{
+    if((b.exp||'').localeCompare(a.exp||'')!==0)return (b.exp||'').localeCompare(a.exp||'');
+    if(a.vol!==b.vol)return Number(a.vol)-Number(b.vol);
+    return (flavorOrder[a.flavor]||9)-(flavorOrder[b.flavor]||9);
+  });
+  // 賞味期限グループでまとめる
+  const groups={};
+  sorted.forEach(p=>{
+    const key=p.exp||'不明';
+    if(!groups[key])groups[key]=[];
+    groups[key].push(p);
+  });
+  let html='<thead><tr>'
+    +'<th style="text-align:left;white-space:nowrap">商品</th>'
+    +'<th style="text-align:right;white-space:nowrap">アプリ在庫</th>'
+    +'<th style="text-align:right;white-space:nowrap;background:#fef9f0">現物数</th>'
+    +'<th style="text-align:right;white-space:nowrap">差</th>'
+    +'</tr></thead><tbody>';
+  Object.keys(groups).sort((a,b)=>b.localeCompare(a)).forEach(expKey=>{
+    html+=`<tr style="background:#f5f3ee"><td colspan="4" style="font-size:11px;font-weight:600;padding:6px 8px">賞味期限: ${expKey}</td></tr>`;
+    groups[expKey].forEach(p=>{
+      const cur=p.stock||0;
+      if(!showZero && cur===0){
+        // 履歴がなければスキップしてもよいが、簡便のため0は隠す
+        return;
+      }
+      const inputVal=stocktakeInputs[p.id]!==undefined?stocktakeInputs[p.id]:'';
+      const physical=inputVal===''?null:Number(inputVal);
+      const diff=physical===null?null:physical-cur;
+      const diffStr=diff===null?'-':(diff>0?'+':'')+diff;
+      const diffColor=diff===null?'#bbb':diff===0?'#3B6D11':'#A85B0B';
+      const negNote=cur<0?` <span style="color:#A32D2D;font-size:10px">(マイナス)</span>`:'';
+      html+=`<tr>
+        <td style="white-space:nowrap">${fDot(p.flavor)} ${p.flavor.substring(0,4)} ${p.vol}ml${p.pouch?' '+p.pouch:''}</td>
+        <td style="text-align:right">${cur}${negNote}</td>
+        <td style="text-align:right;background:#fffbf2">
+          <input type="number" value="${inputVal}" onchange="stocktakeInputs['${p.id}']=this.value;renderStocktake()" style="width:80px;padding:4px 6px;text-align:right;border:1px solid #ccc;border-radius:4px" placeholder="未入力">
+        </td>
+        <td style="text-align:right;font-weight:600;color:${diffColor}">${diffStr}</td>
+      </tr>`;
+    });
+  });
+  html+='</tbody>';
+  document.getElementById('stocktake-table').innerHTML=html;
+}
+
+function reviewStocktake(){
+  const date=document.getElementById('st-date').value;
+  if(!date){alert('棚卸し日を入力してください');return;}
+  // 入力済みのエントリだけ
+  const entries=[];
+  for(const[pid,val]of Object.entries(stocktakeInputs)){
+    if(val==='')continue;
+    const phys=Number(val);
+    if(isNaN(phys)||phys<0){alert(`商品${pid}: 0以上の数字を入力してください`);return;}
+    const p=products.find(x=>x.id===pid);
+    if(!p)continue;
+    if(phys!==(p.stock||0)){
+      entries.push({pid,name:`${p.flavor} ${p.vol}ml ${p.pouch||''} (期限${p.exp||'?'})`,before:p.stock||0,after:phys,diff:phys-(p.stock||0)});
+    }
+  }
+  if(entries.length===0){alert('変更が必要なロットがありません(全件入力なし or 全件一致)');return;}
+  // 確認モーダル
+  let body='<div style="font-size:13px;line-height:1.7;margin-bottom:14px">以下のロットの在庫を更新します。よろしいですか?</div>';
+  body+='<div style="max-height:380px;overflow-y:auto;border:1px solid #e0ddd6;border-radius:6px;padding:10px;background:#fdfcf8">';
+  entries.forEach(e=>{
+    const diffColor=e.diff>0?'#3B6D11':'#A85B0B';
+    body+=`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0eee8;font-size:12px">
+      <div>${e.name}</div>
+      <div style="text-align:right">${e.before} → ${e.after} <span style="color:${diffColor};font-weight:600">(${e.diff>0?'+':''}${e.diff})</span></div>
+    </div>`;
+  });
+  body+='</div>';
+  body+=`<div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end">
+    <button onclick="closeModal('stocktake-confirm')" style="background:#eee;color:#333;border:none;border-radius:6px;padding:8px 16px;cursor:pointer">キャンセル</button>
+    <button id="st-exec-btn" style="background:#A85B0B;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:600">📦 実行する</button>
+  </div>`;
+  // モーダルを動的に作成
+  let m=document.getElementById('modal-stocktake-confirm');
+  if(!m){
+    m=document.createElement('div');
+    m.id='modal-stocktake-confirm';
+    m.className='modal-overlay';
+    m.innerHTML=`<div class="modal" style="width:560px">
+      <div class="modal-header"><span class="modal-title">棚卸し確認 (${entries.length}件)</span><button class="close-btn" onclick="closeModal('stocktake-confirm')">×</button></div>
+      <div id="st-confirm-body"></div>
+    </div>`;
+    document.body.appendChild(m);
+  }
+  m.querySelector('.modal-title').textContent=`棚卸し確認 (${entries.length}件)`;
+  document.getElementById('st-confirm-body').innerHTML=body;
+  m.classList.add('active');
+  // 実行ボタンを認証付きでバインド
+  document.getElementById('st-exec-btn').onclick=()=>{
+    closeModal('stocktake-confirm');
+    authThen(()=>doStocktake(date,entries),'棚卸し');
+  };
+}
+
+async function doStocktake(date,entries){
+  closeModal('stocktake-confirm');
+  // 進捗表示
+  const btn=document.querySelector('#page-stocktake button[onclick="reviewStocktake()"]');
+  if(btn){btn.disabled=true;btn.textContent='処理中...';}
+  try{
+    for(const e of entries){
+      // stock_logs に1本記録
+      const note=`棚卸し調整 計算${e.before}→現物${e.after} 差${e.diff>0?'+':''}${e.diff}`;
+      const{error:le}=await sb.from('stock_logs').insert({
+        product_id:e.pid,
+        type:'set',
+        qty:e.after,
+        note,
+        created_at:date+'T00:00:00+09:00'
+      });
+      if(le)throw new Error('ログ '+e.pid+': '+le.message);
+      // 在庫を更新
+      const{error:ue}=await sb.from('products').update({stock:e.after}).eq('id',e.pid);
+      if(ue)throw new Error('在庫 '+e.pid+': '+ue.message);
+    }
+    // 完了
+    alert(`✅ 棚卸し完了: ${entries.length}ロットの在庫を更新しました。`);
+    stocktakeInputs={};
+    // 再取得・再描画
+    const{data:pd}=await sb.from('products').select('*');
+    if(pd)products=pd;
+    renderStocktake();
+    renderProductTable();
+    renderInventory();
+    renderDashboard();
+  }catch(e){
+    alert('❌ エラー: '+e.message);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='📦 棚卸しを実行';}
+  }
+}
+
 // ===== MODAL / PAGE =====
 function openModal(id){document.getElementById('modal-'+id).classList.add('open');}
 function closeModal(id){document.getElementById('modal-'+id).classList.remove('open');}
@@ -1957,11 +2143,12 @@ function showPage(id,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');el.classList.add('active');
-  const t={dashboard:'ダッシュボード',customers:'得意先管理',products:'製品マスタ',inventory:'在庫管理',orders:'受注管理',sales:'売上管理',plan:'製造計画',recon:'在庫検算'};
+  const t={dashboard:'ダッシュボード',customers:'得意先管理',products:'製品マスタ',inventory:'在庫管理',orders:'受注管理',sales:'売上管理',plan:'製造計画',recon:'在庫検算',stocktake:'棚卸し'};
   document.getElementById('page-title').textContent=t[id];
   if(id==='sales')renderSalesMonthly();
   if(id==='plan')initPlan();
   if(id==='recon')runRecon();
+  if(id==='stocktake')initStocktake();
 }
 function renderAll(){renderDashboard();renderProductTable();renderInventory();renderOrders();renderCustomers();renderSalesMonthly();initOrderFilters();if(document.getElementById('page-plan')&&document.getElementById('page-plan').classList.contains('active'))renderPlan();}
 
