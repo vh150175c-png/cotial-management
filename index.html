@@ -136,6 +136,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
     <div class="nav-item" onclick="showPage('stocktake',this)">
       <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M2 2h10v3H2V2zm0 4h10v3H2V6zm0 4h10v2H2v-2z" opacity="0.3"/><path d="M2 2h10v10H2V2zm1 1v8h8V3H3zm1 1.5h6v1H4v-1zm0 2.5h6v1H4v-1zm0 2.5h4v1H4v-1z"/></svg>棚卸し
     </div>
+    <div class="nav-item" onclick="showPage('consign',this)">
+      <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M3 2h8l1 3v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5l1-3z" opacity="0.2"/><path d="M3 2h8l1 3v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5l1-3zm0.7 1L3 5h8l-0.7-2H3.7zM3 6v7h8V6H3z"/><circle cx="7" cy="9" r="1.3" fill="none" stroke="currentColor"/></svg>委託管理
+    </div>
   </div>
   <div class="save-status">
     <div class="save-dot" id="save-dot"></div>
@@ -414,7 +417,47 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
       </div>
     </div>
 
+    <div class="page" id="page-consign">
+      <div class="card" style="background:#f8f4ee;border-color:#d4c8b0">
+        <div class="card-header"><span class="card-title">📦 委託管理</span></div>
+        <div style="font-size:12px;line-height:1.8;color:#444">
+          <b>得意先マスタで trade_type に「委託」を含む</b>得意先(委託物販など)が委託先として表示されます。<br>
+          委託先には自社在庫を「預け」として渡し、月末に「いくら売れたか」を金額で記録します。<br>
+          行ける店舗は現物確認で残数を入力すれば、預け在庫を正確にできます。
+        </div>
+        <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+          <button onclick="openConsignShipModal()" style="background:#5a7a5a;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:13px;cursor:pointer;font-weight:600">➤ 委託出荷を記録</button>
+          <button onclick="openConsignSettleModal()" style="background:#A85B0B;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:13px;cursor:pointer;font-weight:600">💰 月締売上を記録</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">📋 委託先一覧</span></div>
+        <div id="consign-customer-list"></div>
+      </div>
+    </div>
+
 <!-- MODALS -->
+<div class="modal-overlay" id="modal-consign-ship">
+  <div class="modal" style="width:560px">
+    <div class="modal-header"><span class="modal-title">➤ 委託出荷を記録</span><button class="close-btn" onclick="closeModal('consign-ship')">×</button></div>
+    <div style="font-size:12px;color:#666;margin-bottom:12px">自社在庫から委託先へ「預け」として商品を渡します。自社在庫が減り、委託先の預け在庫が増えます。</div>
+    <div id="cs-ship-body"></div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-consign-settle">
+  <div class="modal" style="width:520px">
+    <div class="modal-header"><span class="modal-title">💰 月締売上を記録</span><button class="close-btn" onclick="closeModal('consign-settle')">×</button></div>
+    <div style="font-size:12px;color:#666;margin-bottom:12px">委託先から送金された月の売上金額を記録します。商品内訳がわからなくてOK。</div>
+    <div id="cs-settle-body"></div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-consign-check">
+  <div class="modal" style="width:620px">
+    <div class="modal-header"><span class="modal-title">📋 現物確認(預け在庫の調整)</span><button class="close-btn" onclick="closeModal('consign-check')">×</button></div>
+    <div style="font-size:12px;color:#666;margin-bottom:12px">委託先の棚で実際に残っている数を入力すると、預け在庫を実数に合わせます。</div>
+    <div id="cs-check-body"></div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-customer-detail">
   <div class="modal" style="width:720px">
     <div class="modal-header"><span class="modal-title" id="cd-title">得意先詳細</span><button class="close-btn" onclick="closeModal('customer-detail')">×</button></div>
@@ -2038,6 +2081,309 @@ async function doStocktake(date,entries){
   }
 }
 
+// ===== 委託管理 =====
+window.consignStocks=[]; // {customer_id, product_id, qty}
+window.consignSettlements=[]; // {id, customer_id, year_month, amount, note}
+
+function isConsignCustomer(c){
+  return c&&c.trade_type&&c.trade_type.includes('委託');
+}
+
+async function fetchConsignData(){
+  const{data:cs,error:e1}=await sb.from('consign_stocks').select('*');
+  if(e1)throw new Error('委託在庫取得: '+e1.message);
+  window.consignStocks=cs||[];
+  const{data:st,error:e2}=await sb.from('consign_settlements').select('*').order('year_month',{ascending:false});
+  if(e2)throw new Error('委託売上取得: '+e2.message);
+  window.consignSettlements=st||[];
+}
+
+async function initConsign(){
+  try{
+    // 最新データ取得
+    const{data:cd}=await sb.from('customers').select('*');if(cd)customers=cd;
+    const{data:pd}=await sb.from('products').select('*');if(pd)products=pd;
+    await fetchConsignData();
+    renderConsignList();
+  }catch(e){
+    document.getElementById('consign-customer-list').innerHTML=`<div style="color:#A32D2D;padding:14px">エラー: ${e.message}</div>`;
+  }
+}
+
+function renderConsignList(){
+  const consignCusts=customers.filter(isConsignCustomer).sort((a,b)=>(a.no||0)-(b.no||0));
+  if(consignCusts.length===0){
+    document.getElementById('consign-customer-list').innerHTML=`<div style="padding:14px;color:#888;font-size:12px">委託先がありません。<br>得意先マスタで trade_type に「委託」を含む値(例:「委託物販」)を設定してください。</div>`;
+    return;
+  }
+  const stocksByC={};
+  consignStocks.forEach(s=>{
+    if(!stocksByC[s.customer_id])stocksByC[s.customer_id]=[];
+    if(s.qty>0)stocksByC[s.customer_id].push(s);
+  });
+  const settleByC={};
+  consignSettlements.forEach(s=>{
+    if(!settleByC[s.customer_id])settleByC[s.customer_id]={total:0,recent:[]};
+    settleByC[s.customer_id].total+=(s.amount||0);
+    if(settleByC[s.customer_id].recent.length<3)settleByC[s.customer_id].recent.push(s);
+  });
+  let html='';
+  consignCusts.forEach(c=>{
+    const stocks=stocksByC[c.id]||[];
+    const totalStock=stocks.reduce((sum,s)=>sum+s.qty,0);
+    const sumInfo=settleByC[c.id];
+    const totalAmount=sumInfo?sumInfo.total:0;
+    const recent=sumInfo?sumInfo.recent:[];
+    html+=`<div style="border:1px solid #e0ddd6;border-radius:8px;padding:14px;margin-bottom:12px;background:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:14px;font-weight:600">${c.name}<span style="font-size:10px;color:#888;font-weight:400;margin-left:8px">${c.trade_type||''}</span></div>
+        <div style="display:flex;gap:8px">
+          <button onclick="openConsignCheckModal('${c.id}')" style="background:#185FA5;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;cursor:pointer">📋 現物確認</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:12px">
+        <div>
+          <div style="font-size:10px;color:#888;margin-bottom:4px">預け在庫 (合計${totalStock}個)</div>`;
+    if(stocks.length===0){
+      html+=`<div style="color:#bbb">預け在庫なし</div>`;
+    }else{
+      stocks.sort((a,b)=>(a.product_id||'').localeCompare(b.product_id||''));
+      stocks.forEach(s=>{
+        const p=products.find(x=>x.id===s.product_id);
+        const label=p?`${fDot(p.flavor)} ${p.flavor.substring(0,4)} ${p.vol}ml ${p.pouch||''}`:s.product_id;
+        html+=`<div style="display:flex;justify-content:space-between;padding:2px 0">
+          <span>${label}</span><span style="font-weight:500">${s.qty}個</span>
+        </div>`;
+      });
+    }
+    html+=`</div>
+        <div>
+          <div style="font-size:10px;color:#888;margin-bottom:4px">月締売上 (累計¥${totalAmount.toLocaleString()})</div>`;
+    if(recent.length===0){
+      html+=`<div style="color:#bbb">記録なし</div>`;
+    }else{
+      recent.forEach(r=>{
+        html+=`<div style="display:flex;justify-content:space-between;padding:2px 0">
+          <span>${r.year_month}</span><span style="font-weight:500">¥${(r.amount||0).toLocaleString()}</span>
+        </div>`;
+      });
+      if(consignSettlements.filter(s=>s.customer_id===c.id).length>3){
+        html+=`<div style="color:#888;font-size:10px">他${consignSettlements.filter(s=>s.customer_id===c.id).length-3}件</div>`;
+      }
+    }
+    html+=`</div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('consign-customer-list').innerHTML=html;
+}
+
+// 委託出荷モーダル
+function openConsignShipModal(){
+  const consignCusts=customers.filter(isConsignCustomer).sort((a,b)=>(a.no||0)-(b.no||0));
+  if(consignCusts.length===0){alert('委託先がありません。先に得意先マスタを設定してください。');return;}
+  const today=new Date();const td=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  const flavorOrder={'夕凪のマーメイド':1,'蒼炎のドラゴン':2,'逆光のドワーフ':3,'星夜のユニコーン':4};
+  const sortedProducts=[...products].filter(p=>p.stock>0).sort((a,b)=>{
+    if((b.exp||'').localeCompare(a.exp||'')!==0)return (b.exp||'').localeCompare(a.exp||'');
+    if(a.vol!==b.vol)return Number(a.vol)-Number(b.vol);
+    return (flavorOrder[a.flavor]||9)-(flavorOrder[b.flavor]||9);
+  });
+  let html=`<div style="display:flex;flex-direction:column;gap:10px">
+    <label style="font-size:12px">出荷日
+      <input type="date" id="cs-ship-date" value="${td}" style="margin-left:8px;padding:4px 8px;border:1px solid #ccc;border-radius:6px">
+    </label>
+    <label style="font-size:12px">委託先
+      <select id="cs-ship-customer" style="margin-left:8px;padding:6px 10px;border:1px solid #ccc;border-radius:6px;min-width:200px">
+        ${consignCusts.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+      </select>
+    </label>
+    <div style="margin-top:10px;font-size:12px;font-weight:600">出荷する商品と数量</div>
+    <div style="max-height:340px;overflow-y:auto;border:1px solid #e0ddd6;border-radius:6px;padding:8px">`;
+  sortedProducts.forEach(p=>{
+    html+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 4px;border-bottom:1px solid #f0eee8;font-size:12px">
+      <div>${fDot(p.flavor)} ${p.flavor.substring(0,4)} ${p.vol}ml ${p.pouch||''} <span style="color:#888;font-size:10px">(在庫${p.stock})</span></div>
+      <input type="number" min="0" max="${p.stock}" placeholder="0" data-pid="${p.id}" class="cs-ship-qty" style="width:70px;padding:3px 6px;text-align:right;border:1px solid #ccc;border-radius:4px">
+    </div>`;
+  });
+  html+=`</div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px">
+      <button onclick="closeModal('consign-ship')" style="background:#eee;border:none;border-radius:6px;padding:8px 16px;cursor:pointer">キャンセル</button>
+      <button onclick="execConsignShip()" style="background:#5a7a5a;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:600">出荷を記録</button>
+    </div>
+  </div>`;
+  document.getElementById('cs-ship-body').innerHTML=html;
+  openModal('consign-ship');
+}
+
+async function execConsignShip(){
+  const date=document.getElementById('cs-ship-date').value;
+  const cid=document.getElementById('cs-ship-customer').value;
+  if(!date||!cid){alert('日付と委託先を選んでください');return;}
+  const items=[];
+  document.querySelectorAll('.cs-ship-qty').forEach(el=>{
+    const q=Number(el.value);
+    if(q>0)items.push({pid:el.dataset.pid,qty:q});
+  });
+  if(items.length===0){alert('出荷する商品の数量を入力してください');return;}
+  const cust=customers.find(c=>c.id===cid);
+  let msg=`【${cust.name}】に以下を委託出荷します:\n\n`;
+  items.forEach(it=>{
+    const p=products.find(x=>x.id===it.pid);
+    msg+=`・${p.flavor} ${p.vol}ml ${p.pouch||''}: ${it.qty}個\n`;
+  });
+  msg+=`\n日付: ${date}\n\n実行しますか?`;
+  if(!confirm(msg))return;
+  try{
+    // 自社在庫を減らす + stock_logs に sub
+    for(const it of items){
+      const p=products.find(x=>x.id===it.pid);
+      const newStock=(p.stock||0)-it.qty;
+      const{error:e1}=await sb.from('products').update({stock:newStock}).eq('id',it.pid);
+      if(e1)throw new Error('在庫更新: '+e1.message);
+      const{error:e2}=await sb.from('stock_logs').insert({
+        product_id:it.pid,type:'sub',qty:it.qty,
+        note:`委託出荷(${cust.name}) [CONSIGN-SHIP:${cid}]`,
+        created_at:date+'T00:00:00+09:00'
+      });
+      if(e2)throw new Error('在庫ログ: '+e2.message);
+      // 委託在庫を増やす (upsert風)
+      const existing=consignStocks.find(s=>s.customer_id===cid&&s.product_id===it.pid);
+      if(existing){
+        const{error:e3}=await sb.from('consign_stocks').update({qty:existing.qty+it.qty}).eq('customer_id',cid).eq('product_id',it.pid);
+        if(e3)throw new Error('委託在庫更新: '+e3.message);
+      }else{
+        const{error:e3}=await sb.from('consign_stocks').insert({customer_id:cid,product_id:it.pid,qty:it.qty});
+        if(e3)throw new Error('委託在庫作成: '+e3.message);
+      }
+    }
+    alert('✅ 委託出荷を記録しました');
+    closeModal('consign-ship');
+    await initConsign();
+    // 自社商品の再取得もしておく
+    const{data:pd}=await sb.from('products').select('*');if(pd)products=pd;
+    renderProductTable();renderInventory();renderDashboard();
+  }catch(e){alert('❌ '+e.message);}
+}
+
+// 月締売上モーダル
+function openConsignSettleModal(){
+  const consignCusts=customers.filter(isConsignCustomer).sort((a,b)=>(a.no||0)-(b.no||0));
+  if(consignCusts.length===0){alert('委託先がありません');return;}
+  const today=new Date();
+  const lm=new Date(today.getFullYear(),today.getMonth()-1,1);
+  const lastYM=lm.getFullYear()+'-'+String(lm.getMonth()+1).padStart(2,'0');
+  let html=`<div style="display:flex;flex-direction:column;gap:12px">
+    <label style="font-size:12px">委託先
+      <select id="cs-settle-customer" style="margin-left:8px;padding:6px 10px;border:1px solid #ccc;border-radius:6px;min-width:200px">
+        ${consignCusts.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+      </select>
+    </label>
+    <label style="font-size:12px">対象月
+      <input type="month" id="cs-settle-month" value="${lastYM}" style="margin-left:8px;padding:4px 8px;border:1px solid #ccc;border-radius:6px">
+    </label>
+    <label style="font-size:12px">売上金額(円)
+      <input type="number" id="cs-settle-amount" min="0" placeholder="例: 12000" style="margin-left:8px;padding:4px 8px;border:1px solid #ccc;border-radius:6px;width:140px;text-align:right">
+    </label>
+    <label style="font-size:12px">メモ(任意)
+      <input type="text" id="cs-settle-note" placeholder="例: 振込日6/15、内訳不明" style="margin-left:8px;padding:4px 8px;border:1px solid #ccc;border-radius:6px;width:280px">
+    </label>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px">
+      <button onclick="closeModal('consign-settle')" style="background:#eee;border:none;border-radius:6px;padding:8px 16px;cursor:pointer">キャンセル</button>
+      <button onclick="execConsignSettle()" style="background:#A85B0B;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:600">売上を記録</button>
+    </div>
+  </div>`;
+  document.getElementById('cs-settle-body').innerHTML=html;
+  openModal('consign-settle');
+}
+
+async function execConsignSettle(){
+  const cid=document.getElementById('cs-settle-customer').value;
+  const ym=document.getElementById('cs-settle-month').value;
+  const amount=Number(document.getElementById('cs-settle-amount').value);
+  const note=document.getElementById('cs-settle-note').value||'';
+  if(!cid||!ym){alert('委託先と対象月を選んでください');return;}
+  if(!amount||amount<=0){alert('売上金額を入力してください');return;}
+  const cust=customers.find(c=>c.id===cid);
+  if(!confirm(`【${cust.name}】 ${ym}の売上 ¥${amount.toLocaleString()} を記録します。よろしいですか?`))return;
+  try{
+    const{error}=await sb.from('consign_settlements').insert({
+      customer_id:cid,year_month:ym,amount:amount,note:note
+    });
+    if(error)throw new Error(error.message);
+    alert('✅ 月締売上を記録しました');
+    closeModal('consign-settle');
+    await initConsign();
+  }catch(e){alert('❌ '+e.message);}
+}
+
+// 現物確認モーダル
+function openConsignCheckModal(cid){
+  const cust=customers.find(c=>c.id===cid);if(!cust)return;
+  const stocks=consignStocks.filter(s=>s.customer_id===cid);
+  const today=new Date();const td=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  let html=`<div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font-size:13px;font-weight:600;background:#f5f3ee;padding:8px 12px;border-radius:6px">${cust.name}</div>
+    <label style="font-size:12px">確認日
+      <input type="date" id="cs-check-date" value="${td}" style="margin-left:8px;padding:4px 8px;border:1px solid #ccc;border-radius:6px">
+    </label>
+    <div style="margin-top:6px;font-size:12px;color:#888">下記の各商品について、現物の残数を入力してください。空欄は変更なし。</div>
+    <div style="max-height:340px;overflow-y:auto;border:1px solid #e0ddd6;border-radius:6px;padding:8px">`;
+  if(stocks.length===0){
+    html+=`<div style="color:#bbb;padding:20px;text-align:center">この委託先には預け在庫がありません</div>`;
+  }else{
+    stocks.sort((a,b)=>(a.product_id||'').localeCompare(b.product_id||''));
+    stocks.forEach(s=>{
+      const p=products.find(x=>x.id===s.product_id);
+      const label=p?`${fDot(p.flavor)} ${p.flavor.substring(0,4)} ${p.vol}ml ${p.pouch||''}`:s.product_id;
+      html+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 4px;border-bottom:1px solid #f0eee8;font-size:12px">
+        <div>${label} <span style="color:#888;font-size:10px">(預け${s.qty})</span></div>
+        <input type="number" min="0" placeholder="現物" data-pid="${s.product_id}" data-before="${s.qty}" class="cs-check-qty" style="width:80px;padding:3px 6px;text-align:right;border:1px solid #ccc;border-radius:4px">
+      </div>`;
+    });
+  }
+  html+=`</div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px">
+      <button onclick="closeModal('consign-check')" style="background:#eee;border:none;border-radius:6px;padding:8px 16px;cursor:pointer">キャンセル</button>
+      <button onclick="execConsignCheck('${cid}')" style="background:#185FA5;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:600">確認を反映</button>
+    </div>
+  </div>`;
+  document.getElementById('cs-check-body').innerHTML=html;
+  openModal('consign-check');
+}
+
+async function execConsignCheck(cid){
+  const date=document.getElementById('cs-check-date').value;
+  if(!date){alert('確認日を入力してください');return;}
+  const cust=customers.find(c=>c.id===cid);
+  const updates=[];
+  document.querySelectorAll('.cs-check-qty').forEach(el=>{
+    if(el.value===''||el.value===null)return;
+    const after=Number(el.value);
+    const before=Number(el.dataset.before);
+    if(after===before)return;
+    updates.push({pid:el.dataset.pid,before,after,diff:after-before});
+  });
+  if(updates.length===0){alert('変更がありません(全件未入力 or 全件一致)');return;}
+  let msg=`【${cust.name}】の預け在庫を以下のように更新します:\n\n`;
+  updates.forEach(u=>{
+    const p=products.find(x=>x.id===u.pid);
+    msg+=`・${p?p.flavor+' '+p.vol+'ml':u.pid}: ${u.before} → ${u.after} (${u.diff>0?'+':''}${u.diff})\n`;
+  });
+  msg+=`\n差は「販売または調整」として記録されます。実行しますか?`;
+  if(!confirm(msg))return;
+  try{
+    for(const u of updates){
+      const{error:e1}=await sb.from('consign_stocks').update({qty:u.after}).eq('customer_id',cid).eq('product_id',u.pid);
+      if(e1)throw new Error('委託在庫更新: '+e1.message);
+      // メモにも記録(stock_logsには載せない - 自社在庫は動かないので)
+    }
+    alert('✅ 現物確認を反映しました');
+    closeModal('consign-check');
+    await initConsign();
+  }catch(e){alert('❌ '+e.message);}
+}
+
 // ===== MODAL / PAGE =====
 function openModal(id){document.getElementById('modal-'+id).classList.add('open');}
 function closeModal(id){document.getElementById('modal-'+id).classList.remove('open');}
@@ -2111,12 +2457,13 @@ function showPage(id,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');el.classList.add('active');
-  const t={dashboard:'ダッシュボード',customers:'得意先管理',products:'製品マスタ',inventory:'在庫管理',orders:'受注管理',sales:'売上管理',plan:'製造計画',recon:'在庫検算',stocktake:'棚卸し'};
+  const t={dashboard:'ダッシュボード',customers:'得意先管理',products:'製品マスタ',inventory:'在庫管理',orders:'受注管理',sales:'売上管理',plan:'製造計画',recon:'在庫検算',stocktake:'棚卸し',consign:'委託管理'};
   document.getElementById('page-title').textContent=t[id];
   if(id==='sales')renderSalesMonthly();
   if(id==='plan')initPlan();
   if(id==='recon')runRecon();
   if(id==='stocktake')initStocktake();
+  if(id==='consign')initConsign();
 }
 function renderAll(){renderDashboard();renderProductTable();renderInventory();renderOrders();renderCustomers();renderSalesMonthly();initOrderFilters();if(document.getElementById('page-plan')&&document.getElementById('page-plan').classList.contains('active'))renderPlan();}
 
