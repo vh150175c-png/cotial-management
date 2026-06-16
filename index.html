@@ -130,9 +130,6 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
     <div class="nav-item" onclick="showPage('plan',this)">
       <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M2 1h10v2H2V1zm0 4h10v2H2V5zm0 4h10v2H2V9zm0 4h7v1H2v-1z"/><circle cx="11.5" cy="12" r="1.5" fill="#fff" stroke="currentColor" stroke-width="0.8"/></svg>製造計画
     </div>
-    <div class="nav-item" onclick="showPage('recon',this)">
-      <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M2 2h10v10H2V2zm1 1v8h8V3H3z"/><path d="M4.5 7l1.5 1.5L9.5 5" stroke="currentColor" stroke-width="1" fill="none"/></svg>在庫検算
-    </div>
     <div class="nav-item" onclick="showPage('stocktake',this)">
       <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M2 2h10v3H2V2zm0 4h10v3H2V6zm0 4h10v2H2v-2z" opacity="0.3"/><path d="M2 2h10v10H2V2zm1 1v8h8V3H3zm1 1.5h6v1H4v-1zm0 2.5h6v1H4v-1zm0 2.5h4v1H4v-1z"/></svg>棚卸し
     </div>
@@ -204,6 +201,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
         <select class="filter-select" onchange="filterProducts()" id="f-flavor"><option value="">フレーバー：全て</option></select>
         <select class="filter-select" onchange="filterProducts()" id="f-vol"><option value="">容量：全て</option></select>
         <select class="filter-select" onchange="filterProducts()" id="f-pouch"><option value="">パウチ：全て</option></select>
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#555;cursor:pointer">
+          <input type="checkbox" id="f-show-zero" onchange="filterProducts()"> 在庫0も表示
+        </label>
         <div style="margin-left:auto;display:flex;gap:8px">
           <button class="btn btn-green" onclick="exportCSV('products')">📥 CSV</button>
           <button class="btn btn-primary" onclick="openModal('new-product')">＋ 商品追加</button>
@@ -221,13 +221,17 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
       <div class="card">
         <div class="card-header">
           <span class="card-title">在庫一覧</span>
-          <div style="display:flex;gap:8px">
+          <div style="display:flex;gap:10px;align-items:center">
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#555;cursor:pointer">
+              <input type="checkbox" id="inv-show-zero" onchange="renderInventory()"> 在庫0も表示
+            </label>
             <button class="btn btn-green" onclick="exportCSV('inventory')">📥 CSV</button>
             <button class="btn btn-primary" onclick="openAdjustModal()">在庫調整</button>
           </div>
         </div>
         <table><thead><tr><th>商品ID</th><th>フレーバー</th><th>容量</th><th>パウチ</th><th>製造場所</th><th>現在庫</th><th>賞味期限</th><th>状況</th></tr></thead>
         <tbody id="inv-table"></tbody></table>
+        <div id="inv-hidden-msg" style="padding:10px;font-size:11px;color:#888;text-align:center"></div>
       </div>
     </div>
 
@@ -369,27 +373,6 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
       </div>
     </div>
 
-    <div class="page" id="page-recon">
-      <div class="card" style="background:#f0f8ff;border-color:#a8d0f0">
-        <div class="card-header"><span class="card-title">🔍 在庫検算ツール</span></div>
-        <div style="font-size:12px;line-height:1.8;color:#444">
-          各ロットについて、<b>取込済みの取引履歴(注文・製造・返品・期首在庫)から計算した在庫</b>と、<b>現在アプリに登録されている在庫数</b>を比較します。<br>
-          完全一致していれば、データ整合性は保たれている状態です。差がある場合は、在庫調整や手動入力で意図的にズラした履歴がある可能性があります。<br>
-          <b style="color:#185FA5">注:</b>過去取り込み時に最終在庫を直接セットしたロットは、それ以降の変動が検算対象です。期首在庫がない古いロットは「-」表示になります。
-        </div>
-        <div style="margin-top:14px">
-          <button onclick="runRecon()" style="background:#185FA5;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;cursor:pointer;font-weight:600">🔄 検算を実行する</button>
-        </div>
-      </div>
-      <div id="recon-summary" style="margin-bottom:16px"></div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">📋 ロット別検算結果</span></div>
-        <div style="overflow-x:auto">
-          <table id="recon-table" style="font-size:11px;width:100%"></table>
-        </div>
-      </div>
-    </div>
-
     <div class="page" id="page-stocktake">
       <div class="card" style="background:#fef9f0;border-color:#e8d8a0">
         <div class="card-header"><span class="card-title">📦 棚卸しツール</span></div>
@@ -437,6 +420,12 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
     </div>
 
 <!-- MODALS -->
+<div class="modal-overlay" id="modal-order-detail">
+  <div class="modal" style="width:680px">
+    <div class="modal-header"><span class="modal-title" id="od-title">受注詳細</span><button class="close-btn" onclick="closeModal('order-detail')">×</button></div>
+    <div id="od-body"></div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-consign-ship">
   <div class="modal" style="width:560px">
     <div class="modal-header"><span class="modal-title">➤ 委託出荷を記録</span><button class="close-btn" onclick="closeModal('consign-ship')">×</button></div>
@@ -638,7 +627,7 @@ const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ===== 定数 =====
-const FLAVOR_COLOR={'夕凪のマーメイド':'#D4537E','蒼炎のドラゴン':'#378ADD','逆光のドワーフ':'#BA7517','星夜のユニコーン':'#7F77DD','トライアルギフトセット':'#1D9E75'};
+const FLAVOR_COLOR={'夕凪のマーメイド':'#E91E63','蒼炎のドラゴン':'#D32F2F','逆光のドワーフ':'#BA7517','星夜のユニコーン':'#7F77DD','トライアルギフトセット':'#1D9E75'};
 const INDUSTRY_COLOR={'小売(食品)':'#3B6D11','小売(雑貨)':'#185FA5','飲食':'#854F0B','サロン':'#993556','ホテル':'#5B4EA8','道の駅':'#1D9E75','EC':'#378ADD','物販':'#7D8A8E'};
 
 // ===== 初期得意先データ =====
@@ -947,7 +936,8 @@ async function saveCustomer(){
 let filteredProducts=[];
 function filterProducts(){
   const ff=document.getElementById('f-flavor').value,fv=document.getElementById('f-vol').value,fp=document.getElementById('f-pouch').value;
-  filteredProducts=products.filter(p=>(!ff||p.flavor===ff)&&(!fv||p.vol==fv)&&(!fp||p.pouch===fp));
+  const showZero=document.getElementById('f-show-zero')&&document.getElementById('f-show-zero').checked;
+  filteredProducts=products.filter(p=>(!ff||p.flavor===ff)&&(!fv||p.vol==fv)&&(!fp||p.pouch===fp)&&(showZero||(p.stock||0)>0));
   document.getElementById('products-count').textContent=`全${filteredProducts.length}件`;
   renderProductTable();
 }
@@ -1101,7 +1091,12 @@ async function doDeleteOrder(id){
   }
 }
 function renderInventory(){
-  document.getElementById('inv-table').innerHTML=products.map(p=>{const pct=Math.min(Math.round((p.stock||0)/Math.max(p.stock||0,200)*100),100);const color=(p.stock||0)===0?'#E24B4A':(p.stock||0)<20?'#BA7517':'#185FA5';return`<tr><td style="font-size:10px;color:#999;white-space:nowrap">${p.id}</td><td>${fDot(p.flavor)} ${p.flavor}</td><td>${p.vol}ml</td><td><span class="badge bg">${p.pouch}</span></td><td style="font-size:10px;color:#999">${(p.maker||'').replace('株式会社','(株)').replace('センター','C.')}</td><td style="text-align:right;font-weight:500;${(p.stock||0)===0?'color:#A32D2D':''}">${p.stock||0}</td><td class="${expStatus(p.exp)==='past'?'expiry-past':expStatus(p.exp)==='soon'?'expiry-warn':'expiry-ok'}">${p.exp||'-'}</td><td><div style="display:flex;align-items:center;gap:6px"><div class="progress" style="flex:1"><div class="progress-bar" style="width:${pct}%;background:${color}"></div></div>${stockBadge(p.stock||0)}</div></td></tr>`;}).join('');
+  const showZero=document.getElementById('inv-show-zero')&&document.getElementById('inv-show-zero').checked;
+  const visible=products.filter(p=>showZero||(p.stock||0)>0);
+  const hidden=products.length-visible.length;
+  document.getElementById('inv-table').innerHTML=visible.map(p=>{const pct=Math.min(Math.round((p.stock||0)/Math.max(p.stock||0,200)*100),100);const color=(p.stock||0)<0?'#A32D2D':(p.stock||0)===0?'#E24B4A':(p.stock||0)<20?'#BA7517':'#185FA5';return`<tr><td style="font-size:10px;color:#999;white-space:nowrap">${p.id}</td><td>${fDot(p.flavor)} ${p.flavor}</td><td>${p.vol}ml</td><td><span class="badge bg">${p.pouch}</span></td><td style="font-size:10px;color:#999">${(p.maker||'').replace('株式会社','(株)').replace('センター','C.')}</td><td style="text-align:right;font-weight:500;${(p.stock||0)<=0?'color:#A32D2D':''}">${p.stock||0}</td><td class="${expStatus(p.exp)==='past'?'expiry-past':expStatus(p.exp)==='soon'?'expiry-warn':'expiry-ok'}">${p.exp||'-'}</td><td><div style="display:flex;align-items:center;gap:6px"><div class="progress" style="flex:1"><div class="progress-bar" style="width:${pct}%;background:${color}"></div></div>${stockBadge(p.stock||0)}</div></td></tr>`;}).join('');
+  const msgEl=document.getElementById('inv-hidden-msg');
+  if(msgEl)msgEl.innerHTML=hidden>0?`在庫0/マイナスの商品 ${hidden}件を非表示中　<a href="#" onclick="document.getElementById('inv-show-zero').checked=true;renderInventory();return false" style="color:#185FA5">→ 表示する</a>`:'';
 }
 function openAdjustModal(){
   document.getElementById('adj-product').innerHTML=products.map(p=>`<option value="${p.id}">${p.flavor} ${p.vol}ml ${p.pouch}　賞味期限:${p.exp||'なし'}　在庫:${p.stock||0}個</option>`).join('');
@@ -1217,7 +1212,7 @@ function renderOrders(){
     const marginRate=cost&&o.price?Math.round((o.price-cost)/o.price*100):null;
     const marginColor=marginRate===null?'#999':marginRate>=40?'#3B6D11':marginRate>=20?'#854F0B':'#A32D2D';
     return`<tr>
-      <td style="color:#185FA5;font-weight:500">${o.id}</td>
+      <td style="color:#185FA5;font-weight:500;cursor:pointer;text-decoration:underline" onclick="openOrderDetail('${o.id}')" title="詳細を表示">${o.id}</td>
       <td>${custName(o.customer_id)}</td>
       <td style="font-size:10px">${prodName(o.product_id)}</td>
       <td style="text-align:right">${o.qty}</td>
@@ -1826,136 +1821,6 @@ function renderPlan(){
   document.getElementById('plan-charts').innerHTML=charts;
 }
 
-// ===== 在庫検算 =====
-async function runRecon(){
-  document.getElementById('recon-table').innerHTML='<tbody><tr><td>計算中...</td></tr></tbody>';
-  document.getElementById('recon-summary').innerHTML='';
-  try{
-    // 最新の在庫・在庫ログを取得
-    const {data:pd}=await sb.from('products').select('*');
-    if(pd)products=pd;
-    let allLogs=[],from=0;
-    while(true){
-      const {data:ld,error:le}=await sb.from('stock_logs').select('*').range(from,from+999);
-      if(le)throw le;
-      if(!ld||ld.length===0)break;
-      allLogs=allLogs.concat(ld);
-      if(ld.length<1000)break;
-      from+=1000;
-    }
-    // 商品ごとに集計
-    const byProd={};
-    products.forEach(p=>{byProd[p.id]={p,opening:0,prod:0,ret:0,sub:0,sold:0,setVal:null,setAt:null}});
-    // 在庫ログから 期首/製造/返品/ロス/SET を分類
-    allLogs.forEach(l=>{
-      const e=byProd[l.product_id];if(!e)return;
-      const orig=l.note||'';
-      if(l.type==='set'){
-        if(!e.setAt||new Date(l.created_at)>new Date(e.setAt)){e.setVal=l.qty;e.setAt=l.created_at;}
-      }else if(l.type==='add'){
-        if(orig.includes('期首在庫'))e.opening+=l.qty;
-        else if(orig.includes('製造'))e.prod+=l.qty;
-        else if(orig.includes('返品'))e.ret+=l.qty;
-        else e.ret+=l.qty;
-      }else if(l.type==='sub'){
-        e.sub+=l.qty;
-      }
-    });
-    orders.forEach(o=>{
-      const e=byProd[o.product_id];if(!e)return;
-      e.sold+=o.qty;
-    });
-    const rows=[];let ok=0,ng=0,nodata=0;
-    products.forEach(p=>{
-      const e=byProd[p.id];
-      const hasHistory=(e.opening||e.prod||e.ret||e.sub||e.sold||e.setVal!==null);
-      if(!hasHistory){nodata++;rows.push({p,e,calc:null,diff:null,status:'nodata'});return;}
-      let calc;
-      if(e.setVal!==null){
-        const setDate=e.setAt;
-        let postProd=0,postRet=0,postSub=0,postSold=0;
-        allLogs.forEach(l=>{
-          if(l.product_id!==p.id)return;
-          if(new Date(l.created_at)<=new Date(setDate))return;
-          if(l.type==='add'){
-            if((l.note||'').includes('製造'))postProd+=l.qty;
-            else if((l.note||'').includes('返品'))postRet+=l.qty;
-            else postRet+=l.qty;
-          }else if(l.type==='sub')postSub+=l.qty;
-        });
-        const setDateOnly=setDate.substring(0,10);
-        orders.forEach(o=>{
-          if(o.product_id!==p.id)return;
-          if((o.date||'')<=setDateOnly)return;
-          postSold+=o.qty;
-        });
-        calc=e.setVal+postProd+postRet-postSub-postSold;
-      }else{
-        calc=e.opening+e.prod+e.ret-e.sub-e.sold;
-      }
-      const cur=p.stock||0;
-      const diff=cur-calc;
-      const status=(diff===0)?'ok':'ng';
-      if(status==='ok')ok++;else ng++;
-      rows.push({p,e,calc,diff,status});
-    });
-    rows.sort((a,b)=>{
-      const ord={ng:0,ok:1,nodata:2};
-      if(ord[a.status]!==ord[b.status])return ord[a.status]-ord[b.status];
-      return a.p.id.localeCompare(b.p.id);
-    });
-    // サマリー
-    let summary=`<div class="card" style="background:${ng===0?'#e8f5e8':'#fff5e8'};border-color:${ng===0?'#7fb37f':'#f0c878'}">`;
-    if(ng===0){
-      summary+=`<div style="font-size:14px;color:#3B6D11;font-weight:600">✅ 検算結果: 全${ok}ロットで計算値と現在庫が一致しています</div>`;
-      summary+=`<div style="font-size:11px;color:#666;margin-top:6px">データの整合性は保たれています。(${nodata}ロットは履歴なしのため検算対象外)</div>`;
-    }else{
-      summary+=`<div style="font-size:14px;color:#A85B0B;font-weight:600">⚠ 検算結果: ${ng}ロットで差があります(${ok}ロットは一致、${nodata}ロットは履歴なし)</div>`;
-      summary+=`<div style="font-size:11px;color:#666;margin-top:6px">差は「在庫調整」「手動入力」「データ漏れ」などの理由で発生します。下記の表で確認してください。</div>`;
-    }
-    summary+='</div>';
-    document.getElementById('recon-summary').innerHTML=summary;
-    // テーブル
-    let html='<thead><tr>'
-      +'<th style="text-align:left;white-space:nowrap">状態</th>'
-      +'<th style="text-align:left;white-space:nowrap">商品</th>'
-      +'<th style="text-align:right;white-space:nowrap">期首</th>'
-      +'<th style="text-align:right;white-space:nowrap">製造</th>'
-      +'<th style="text-align:right;white-space:nowrap">返品/その他</th>'
-      +'<th style="text-align:right;white-space:nowrap">ロス/減</th>'
-      +'<th style="text-align:right;white-space:nowrap">販売</th>'
-      +'<th style="text-align:right;white-space:nowrap">計算値</th>'
-      +'<th style="text-align:right;white-space:nowrap">現在庫</th>'
-      +'<th style="text-align:right;white-space:nowrap">差</th>'
-      +'</tr></thead><tbody>';
-    rows.forEach(r=>{
-      const p=r.p,e=r.e;
-      const flav=`${fDot(p.flavor)} ${p.flavor.substring(0,4)} ${p.vol}ml ${p.pouch||''}`;
-      const expHint=p.exp?` <span style="color:#999;font-size:10px">(${p.exp})</span>`:'';
-      let statHtml='';
-      if(r.status==='ok')statHtml='<span style="color:#3B6D11">✓ 一致</span>';
-      else if(r.status==='ng')statHtml=`<span style="color:#A32D2D">⚠ 差${r.diff>0?'+':''}${r.diff}</span>`;
-      else statHtml='<span style="color:#999">履歴なし</span>';
-      const bg=r.status==='ng'?'#fff5f5':'';
-      html+=`<tr style="background:${bg}">
-        <td style="white-space:nowrap">${statHtml}</td>
-        <td style="white-space:nowrap">${flav}${expHint}</td>
-        <td style="text-align:right;color:${e.opening?'#444':'#ccc'}">${e.opening||'-'}</td>
-        <td style="text-align:right;color:${e.prod?'#444':'#ccc'}">${e.prod||'-'}</td>
-        <td style="text-align:right;color:${e.ret?'#444':'#ccc'}">${e.ret||'-'}</td>
-        <td style="text-align:right;color:${e.sub?'#A32D2D':'#ccc'}">${e.sub?'-'+e.sub:'-'}</td>
-        <td style="text-align:right;color:${e.sold?'#185FA5':'#ccc'}">${e.sold?'-'+e.sold:'-'}</td>
-        <td style="text-align:right;font-weight:500">${r.calc===null?'-':r.calc}</td>
-        <td style="text-align:right;font-weight:500">${p.stock||0}</td>
-        <td style="text-align:right;font-weight:600;color:${r.diff===null?'#ccc':r.diff===0?'#3B6D11':'#A32D2D'}">${r.diff===null?'-':(r.diff>0?'+':'')+r.diff}</td>
-      </tr>`;
-    });
-    html+='</tbody>';
-    document.getElementById('recon-table').innerHTML=html;
-  }catch(e){
-    document.getElementById('recon-table').innerHTML=`<tbody><tr><td style="color:#A32D2D">エラー: ${e.message}</td></tr></tbody>`;
-  }
-}
 
 // ===== 棚卸し =====
 window.stocktakeInputs={}; // pid → 現物数(文字列)
@@ -2079,6 +1944,75 @@ async function doStocktake(date,entries){
   }catch(e){
     alert('❌ エラー: '+e.message);
   }
+}
+
+// ===== 受注詳細モーダル =====
+function openOrderDetail(orderId){
+  const o=orders.find(x=>x.id===orderId);
+  if(!o){alert('受注が見つかりません');return;}
+  const cust=customers.find(c=>c.id===o.customer_id);
+  // 同じグループの注文を取得(同じ注文グループ = まとめて入った注文)
+  const sameGroup=o.order_group_id?orders.filter(x=>x.order_group_id===o.order_group_id):[o];
+  sameGroup.sort((a,b)=>a.id.localeCompare(b.id));
+  
+  // ヘッダ情報
+  let totalAmt=0,totalQty=0;
+  sameGroup.forEach(x=>{totalAmt+=orderAmt(x);totalQty+=x.qty;});
+  const isHistorical=o.id.startsWith('SO-H');
+  
+  let html=`<div style="font-size:12px;line-height:1.7">
+    <div style="background:#f5f3ee;padding:12px;border-radius:8px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div><b>受注番号:</b> ${o.id}${isHistorical?' <span style="background:#e8f0f7;color:#185FA5;font-size:9px;padding:1px 6px;border-radius:8px;margin-left:4px">過去取込</span>':''}</div>
+      <div><b>受注日:</b> ${o.date}</div>
+      <div><b>得意先:</b> ${cust?cust.name:'(未登録)'}</div>
+      <div><b>納品日:</b> ${o.delivery_date||'-'}</div>
+      ${o.order_group_id?`<div style="grid-column:span 2"><b>注文グループ:</b> ${o.order_group_id} <span style="color:#888;font-size:10px">(同じ注文として登録された明細: ${sameGroup.length}件)</span></div>`:''}
+    </div>
+    <div style="font-weight:600;margin-bottom:8px">📦 商品明細</div>
+    <table style="width:100%;font-size:11px;margin-bottom:14px">
+      <thead><tr style="background:#f5f3ee">
+        <th style="text-align:left;padding:6px">商品</th>
+        <th style="text-align:right;padding:6px">数量</th>
+        <th style="text-align:right;padding:6px">単価</th>
+        <th style="text-align:right;padding:6px">金額</th>
+      </tr></thead><tbody>`;
+  sameGroup.forEach(x=>{
+    const p=products.find(pr=>pr.id===x.product_id);
+    const isCurrentRow=x.id===o.id;
+    html+=`<tr style="${isCurrentRow?'background:#fffbf2':''}">
+      <td style="padding:6px">${p?fDot(p.flavor)+' '+p.flavor+' '+p.vol+'ml '+(p.pouch||''):x.product_id}<br><span style="font-size:9px;color:#999">${x.product_id}</span></td>
+      <td style="text-align:right;padding:6px">${x.qty}</td>
+      <td style="text-align:right;padding:6px">${fmt(x.price)}</td>
+      <td style="text-align:right;padding:6px;font-weight:500">${fmt(orderAmt(x))}</td>
+    </tr>`;
+  });
+  html+=`</tbody><tfoot><tr style="background:#f5f3ee;font-weight:600">
+    <td style="padding:6px">合計</td>
+    <td style="text-align:right;padding:6px">${totalQty}</td>
+    <td></td>
+    <td style="text-align:right;padding:6px">${fmt(totalAmt)}</td>
+  </tr></tfoot></table>`;
+  
+  // 得意先情報
+  if(cust){
+    html+=`<div style="font-weight:600;margin-bottom:8px">🏪 得意先情報</div>
+    <div style="background:#fafaf6;padding:10px;border-radius:6px;font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px">
+      <div><span style="color:#888">業種:</span> ${cust.industry||'-'}</div>
+      <div><span style="color:#888">取引:</span> ${cust.trade_type||'-'}</div>
+      <div><span style="color:#888">配送:</span> ${cust.delivery||'-'}</div>
+      <div><span style="color:#888">連絡:</span> ${cust.contact||'-'}</div>
+    </div>`;
+  }
+  
+  // アクションボタン
+  html+=`<div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e0ddd6;padding-top:12px">
+    ${cust?`<button onclick="closeModal('order-detail');openCustomerDetail('${cust.id}')" style="background:#185FA5;color:#fff;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:12px">🏪 得意先の全受注を見る</button>`:''}
+    <button onclick="closeModal('order-detail')" style="background:#eee;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:12px">閉じる</button>
+  </div>`;
+  
+  document.getElementById('od-title').textContent=`受注詳細: ${o.id}`;
+  document.getElementById('od-body').innerHTML=html;
+  openModal('order-detail');
 }
 
 // ===== 委託管理 =====
@@ -2457,11 +2391,10 @@ function showPage(id,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');el.classList.add('active');
-  const t={dashboard:'ダッシュボード',customers:'得意先管理',products:'製品マスタ',inventory:'在庫管理',orders:'受注管理',sales:'売上管理',plan:'製造計画',recon:'在庫検算',stocktake:'棚卸し',consign:'委託管理'};
+  const t={dashboard:'ダッシュボード',customers:'得意先管理',products:'製品マスタ',inventory:'在庫管理',orders:'受注管理',sales:'売上管理',plan:'製造計画',stocktake:'棚卸し',consign:'委託管理'};
   document.getElementById('page-title').textContent=t[id];
   if(id==='sales')renderSalesMonthly();
   if(id==='plan')initPlan();
-  if(id==='recon')runRecon();
   if(id==='stocktake')initStocktake();
   if(id==='consign')initConsign();
 }
