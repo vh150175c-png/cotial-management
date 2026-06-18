@@ -398,6 +398,13 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
           <table id="stocktake-table" style="font-size:12px;width:100%"></table>
         </div>
       </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📅 過去の棚卸し履歴</span>
+          <button onclick="renderStocktakeHistory()" style="background:none;border:1px solid #ccc;color:#555;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer">🔄 更新</button>
+        </div>
+        <div id="stocktake-history" style="padding:4px"></div>
+      </div>
     </div>
 
     <div class="page" id="page-consign">
@@ -1835,6 +1842,85 @@ async function initStocktake(){
   const dt=document.getElementById('st-date');
   if(!dt.value)dt.value=td;
   renderStocktake();
+  renderStocktakeHistory();
+}
+
+async function renderStocktakeHistory(){
+  const el=document.getElementById('stocktake-history');
+  if(!el)return;
+  el.innerHTML='<div style="padding:14px;color:#888;font-size:12px">読み込み中...</div>';
+  try{
+    // type='set' & note に '棚卸し調整' を含むログを取得
+    const {data,error}=await sb.from('stock_logs').select('*').eq('type','set').ilike('note','%棚卸し調整%').order('created_at',{ascending:false}).limit(500);
+    if(error)throw error;
+    if(!data||data.length===0){
+      el.innerHTML='<div style="padding:14px;color:#888;font-size:12px;text-align:center">過去の棚卸し記録はまだありません</div>';
+      return;
+    }
+    // セッションIDでグループ化(noteから [棚卸し:YYYY-MM-DD HH:MM:SS] を抽出)
+    const groups={};
+    data.forEach(l=>{
+      const m=(l.note||'').match(/\[棚卸し:([^\]]+)\]/);
+      const sid=m?m[1]:(l.created_at||'').substring(0,10);
+      if(!groups[sid])groups[sid]={sid,date:sid.substring(0,10),logs:[]};
+      // 詳細を抽出: 計算{before}→現物{after} 差{diff}
+      const dm=(l.note||'').match(/計算(-?\d+)→現物(-?\d+) 差([+-]?\d+)/);
+      const before=dm?parseInt(dm[1]):null;
+      const after=dm?parseInt(dm[2]):null;
+      const diff=dm?parseInt(dm[3]):null;
+      groups[sid].logs.push({...l,before,after,diff});
+    });
+    // 日付降順で並べる
+    const sorted=Object.values(groups).sort((a,b)=>b.sid.localeCompare(a.sid));
+    let html='';
+    sorted.forEach((g,gi)=>{
+      const totalLots=g.logs.length;
+      const totalAbsDiff=g.logs.reduce((s,l)=>s+Math.abs(l.diff||0),0);
+      const plusCount=g.logs.filter(l=>(l.diff||0)>0).length;
+      const minusCount=g.logs.filter(l=>(l.diff||0)<0).length;
+      const expanded=gi===0?'open':''; // 一番上だけ開いた状態
+      html+=`<details ${expanded} style="margin-bottom:10px;border:1px solid #e0ddd6;border-radius:8px;background:#fff;padding:0">
+        <summary style="padding:12px 14px;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:13px;font-weight:600">📅 ${g.date} の棚卸し</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">${g.sid}</div>
+          </div>
+          <div style="font-size:11px;color:#666">
+            ${totalLots}ロット調整
+            <span style="margin-left:10px">差分合計: <b>${totalAbsDiff}個</b></span>
+            <span style="margin-left:10px;color:#3B6D11">+${plusCount}</span>
+            <span style="margin-left:6px;color:#A85B0B">-${minusCount}</span>
+          </div>
+        </summary>
+        <div style="padding:0 14px 12px 14px">
+          <table style="width:100%;font-size:11px;border-top:1px solid #f0eee8">
+            <thead><tr style="color:#888">
+              <th style="text-align:left;padding:6px 4px">商品</th>
+              <th style="text-align:right;padding:6px 4px">計算上</th>
+              <th style="text-align:right;padding:6px 4px">現物</th>
+              <th style="text-align:right;padding:6px 4px">差</th>
+            </tr></thead><tbody>`;
+      // 差の大きい順に並べる
+      g.logs.sort((a,b)=>Math.abs(b.diff||0)-Math.abs(a.diff||0));
+      g.logs.forEach(l=>{
+        const p=products.find(x=>x.id===l.product_id);
+        const label=p?`${fDot(p.flavor)} ${p.flavor.substring(0,4)} ${p.vol}ml ${p.pouch||''}`:l.product_id;
+        const diffColor=l.diff===0?'#888':l.diff>0?'#3B6D11':'#A85B0B';
+        html+=`<tr>
+          <td style="padding:4px;white-space:nowrap">${label}</td>
+          <td style="text-align:right;padding:4px;color:#888">${l.before!==null?l.before:'-'}</td>
+          <td style="text-align:right;padding:4px;font-weight:500">${l.after!==null?l.after:l.qty}</td>
+          <td style="text-align:right;padding:4px;font-weight:600;color:${diffColor}">${l.diff!==null?(l.diff>0?'+':'')+l.diff:'-'}</td>
+        </tr>`;
+      });
+      html+=`</tbody></table>
+        </div>
+      </details>`;
+    });
+    el.innerHTML=html;
+  }catch(e){
+    el.innerHTML=`<div style="padding:14px;color:#A32D2D;font-size:12px">読み込みエラー: ${e.message}</div>`;
+  }
 }
 
 function renderStocktake(){
@@ -1916,9 +2002,12 @@ function reviewStocktake(){
 
 async function doStocktake(date,entries){
   try{
+    // 棚卸しセッションIDを生成(現在時刻を使う - 同じ作業をまとめるため)
+    const now=new Date();
+    const sessionId=date+' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
     for(const e of entries){
       // stock_logs に1本記録
-      const note=`棚卸し調整 計算${e.before}→現物${e.after} 差${e.diff>0?'+':''}${e.diff}`;
+      const note=`棚卸し調整 計算${e.before}→現物${e.after} 差${e.diff>0?'+':''}${e.diff} [棚卸し:${sessionId}]`;
       const{error:le}=await sb.from('stock_logs').insert({
         product_id:e.pid,
         type:'set',
@@ -1938,6 +2027,7 @@ async function doStocktake(date,entries){
     const{data:pd}=await sb.from('products').select('*');
     if(pd)products=pd;
     renderStocktake();
+    renderStocktakeHistory();
     renderProductTable();
     renderInventory();
     renderDashboard();
