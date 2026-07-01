@@ -130,6 +130,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
     <div class="nav-item" onclick="showPage('plan',this)">
       <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M2 1h10v2H2V1zm0 4h10v2H2V5zm0 4h10v2H2V9zm0 4h7v1H2v-1z"/><circle cx="11.5" cy="12" r="1.5" fill="#fff" stroke="currentColor" stroke-width="0.8"/></svg>製造計画
     </div>
+    <div class="nav-item" onclick="showPage('planner',this)">
+      <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M2 2h10v10H2V2zm1 1v8h8V3H3z"/><path d="M4 5h6M4 7h6M4 9h4" stroke="currentColor" stroke-width="0.9"/><path d="M9.5 8.5l1.2 1.2 2-2.2" stroke="#3B6D11" stroke-width="1" fill="none"/></svg>製造数プランナー
+    </div>
     <div class="nav-item" onclick="showPage('stocktake',this)">
       <svg class="ni" viewBox="0 0 14 14" fill="currentColor"><path d="M2 2h10v3H2V2zm0 4h10v3H2V6zm0 4h10v2H2v-2z" opacity="0.3"/><path d="M2 2h10v10H2V2zm1 1v8h8V3H3zm1 1.5h6v1H4v-1zm0 2.5h6v1H4v-1zm0 2.5h4v1H4v-1z"/></svg>棚卸し
     </div>
@@ -423,6 +426,43 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
       <div class="card">
         <div class="card-header"><span class="card-title">📋 委託先一覧</span></div>
         <div id="consign-customer-list"></div>
+      </div>
+    </div>
+
+    <div class="page" id="page-planner">
+      <div class="card" style="background:#f0f6f0;border-color:#c0d8c0">
+        <div class="card-header"><span class="card-title">📊 製造数プランナー</span></div>
+        <div style="font-size:12px;line-height:1.8;color:#444">
+          得意先別の販売実績を期間を絞って確認しながら、次回の製造数を自分で決めて入力できます。<br>
+          入力した製造数は<b>メモとして保存</b>され、どの端末からでも見られます(実際の製造登録は別で行います)。
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:12px;font-weight:600">期間:</span>
+          <button class="pl-preset" data-preset="3m" onclick="plannerPreset('3m')" style="background:#185FA5;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer">直近3ヶ月</button>
+          <button class="pl-preset" data-preset="6m" onclick="plannerPreset('6m')" style="background:#eef2f5;color:#444;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer">直近6ヶ月</button>
+          <button class="pl-preset" data-preset="12m" onclick="plannerPreset('12m')" style="background:#eef2f5;color:#444;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer">直近12ヶ月</button>
+          <button class="pl-preset" data-preset="ly" onclick="plannerPreset('ly')" style="background:#eef2f5;color:#444;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer">前年同期(3ヶ月)</button>
+          <span style="margin-left:8px;font-size:12px">または</span>
+          <input type="date" id="pl-from" onchange="renderPlanner()" style="padding:4px 8px;border:1px solid #ccc;border-radius:6px;font-size:12px">
+          <span style="font-size:12px">〜</span>
+          <input type="date" id="pl-to" onchange="renderPlanner()" style="padding:4px 8px;border:1px solid #ccc;border-radius:6px;font-size:12px">
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:600">表示:</span>
+          <button id="pl-view-product" onclick="setPlannerView('product')" style="background:#5a7a5a;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer">商品ごと(得意先を列に)</button>
+          <button id="pl-view-customer" onclick="setPlannerView('customer')" style="background:#eef2f5;color:#444;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer">得意先ごと(商品を列に)</button>
+          <span id="pl-period-label" style="margin-left:auto;font-size:11px;color:#888"></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📋 販売実績と次回製造数</span>
+          <button id="pl-save-btn" onclick="savePlannerMemos()" style="background:#3B6D11;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer;font-weight:600">💾 製造数メモを保存</button>
+        </div>
+        <div id="pl-save-status" style="font-size:11px;color:#888;padding:0 4px 8px"></div>
+        <div style="overflow-x:auto">
+          <table id="planner-table" style="font-size:11px;width:100%"></table>
+        </div>
       </div>
     </div>
 
@@ -2105,6 +2145,251 @@ function openOrderDetail(orderId){
   openModal('order-detail');
 }
 
+// ===== 製造数プランナー =====
+window.plannerView='product'; // 'product' or 'customer'
+window.plannerMemos={}; // product_id -> {qty, note}
+window.plannerMemosLoaded=false;
+
+const PL_FLAVORS=['夕凪のマーメイド','蒼炎のドラゴン','逆光のドワーフ','星夜のユニコーン'];
+const PL_VOLS=['50','220'];
+
+async function initPlanner(){
+  // 最新データ取得
+  const{data:od}=await sb.from('orders').select('*').limit(1);
+  // 期間の初期値(直近3ヶ月)
+  if(!document.getElementById('pl-from').value){
+    plannerPreset('3m',true);
+  }
+  // メモをロード(テーブルがあれば)
+  if(!window.plannerMemosLoaded){
+    await loadPlannerMemos();
+  }
+  renderPlanner();
+}
+
+async function loadPlannerMemos(){
+  try{
+    const{data,error}=await sb.from('production_memos').select('*');
+    if(error){
+      // テーブルが無い場合はスキップ(保存機能は後で有効化)
+      window.plannerMemosAvailable=false;
+      return;
+    }
+    window.plannerMemos={};
+    (data||[]).forEach(m=>{window.plannerMemos[m.product_id]={qty:m.qty,note:m.note||''};});
+    window.plannerMemosAvailable=true;
+    window.plannerMemosLoaded=true;
+  }catch(e){
+    window.plannerMemosAvailable=false;
+  }
+}
+
+function plannerPreset(preset,skipRender){
+  // ボタンのハイライト
+  document.querySelectorAll('.pl-preset').forEach(b=>{
+    if(b.dataset.preset===preset){b.style.background='#185FA5';b.style.color='#fff';}
+    else{b.style.background='#eef2f5';b.style.color='#444';}
+  });
+  const today=new Date();
+  let from,to;
+  if(preset==='3m'){
+    to=new Date(today.getFullYear(),today.getMonth(),0); // 先月末
+    from=new Date(today.getFullYear(),today.getMonth()-3,1); // 3ヶ月前の1日
+  }else if(preset==='6m'){
+    to=new Date(today.getFullYear(),today.getMonth(),0);
+    from=new Date(today.getFullYear(),today.getMonth()-6,1);
+  }else if(preset==='12m'){
+    to=new Date(today.getFullYear(),today.getMonth(),0);
+    from=new Date(today.getFullYear(),today.getMonth()-12,1);
+  }else if(preset==='ly'){
+    // 前年同期(今月を中心に前年の±1ヶ月 = 3ヶ月)
+    const c=new Date(today.getFullYear()-1,today.getMonth(),1);
+    from=new Date(c.getFullYear(),c.getMonth()-1,1);
+    to=new Date(c.getFullYear(),c.getMonth()+2,0);
+  }
+  const fmt=(d)=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  document.getElementById('pl-from').value=fmt(from);
+  document.getElementById('pl-to').value=fmt(to);
+  if(!skipRender)renderPlanner();
+}
+
+function setPlannerView(v){
+  window.plannerView=v;
+  document.getElementById('pl-view-product').style.background=v==='product'?'#5a7a5a':'#eef2f5';
+  document.getElementById('pl-view-product').style.color=v==='product'?'#fff':'#444';
+  document.getElementById('pl-view-customer').style.background=v==='customer'?'#5a7a5a':'#eef2f5';
+  document.getElementById('pl-view-customer').style.color=v==='customer'?'#fff':'#444';
+  renderPlanner();
+}
+
+// 商品を「フレーバー×容量」でまとめるキー
+function plProdKey(p){return p.flavor+'|'+p.vol;}
+function plProdLabel(flavor,vol){return `${fDot(flavor)} ${flavor.substring(0,4)} ${vol}ml`;}
+
+// フレーバー×容量ごとの代表商品ID一覧(メモ保存先)
+function plProductsFor(flavor,vol){
+  return products.filter(p=>p.flavor===flavor&&String(p.vol)===String(vol));
+}
+
+function renderPlanner(){
+  const from=document.getElementById('pl-from').value;
+  const to=document.getElementById('pl-to').value;
+  if(!from||!to){document.getElementById('planner-table').innerHTML='<tbody><tr><td>期間を選んでください</td></tr></tbody>';return;}
+  document.getElementById('pl-period-label').textContent=`集計期間: ${from} 〜 ${to}`;
+  // 対象注文
+  const targetOrders=orders.filter(o=>o.date>=from&&o.date<=to);
+  // フレーバー×容量 の8種
+  const prodKeys=[];
+  PL_FLAVORS.forEach(f=>PL_VOLS.forEach(v=>prodKeys.push({flavor:f,vol:v,key:f+'|'+v})));
+  // 得意先ごとの集計(注文がある得意先のみ)
+  const custSet=new Set();
+  const cell={}; // key: prodKey|custId -> qty
+  targetOrders.forEach(o=>{
+    const p=products.find(x=>x.id===o.product_id);
+    if(!p)return;
+    const pk=p.flavor+'|'+p.vol;
+    // 8種に該当しないものはスキップ(ギフトなど)
+    if(!prodKeys.find(x=>x.key===pk))return;
+    custSet.add(o.customer_id);
+    const ck=pk+'|'+o.customer_id;
+    cell[ck]=(cell[ck]||0)+o.qty;
+  });
+  // 得意先を販売数合計の多い順に
+  const custTotals={};
+  custSet.forEach(cid=>{
+    let t=0;prodKeys.forEach(pk=>{t+=(cell[pk.key+'|'+cid]||0);});
+    custTotals[cid]=t;
+  });
+  const custList=[...custSet].sort((a,b)=>custTotals[b]-custTotals[a]);
+
+  let html='';
+  if(window.plannerView==='product'){
+    // 行=商品(8種)、列=得意先
+    html='<thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff;white-space:nowrap;min-width:140px">商品＼得意先</th>';
+    custList.forEach(cid=>{
+      const c=customers.find(x=>x.id===cid);
+      html+=`<th style="text-align:right;white-space:nowrap;padding:4px 8px;font-size:10px">${c?c.name:cid}</th>`;
+    });
+    html+='<th style="text-align:right;background:#f5f3ee;white-space:nowrap">合計</th>';
+    html+='<th style="text-align:right;background:#f0f6f0;white-space:nowrap;min-width:90px">次回製造数</th>';
+    html+='<th style="text-align:left;background:#f0f6f0;white-space:nowrap;min-width:120px">メモ</th></tr></thead><tbody>';
+    prodKeys.forEach(pk=>{
+      let rowTotal=0;
+      let cellsHtml='';
+      custList.forEach(cid=>{
+        const v=cell[pk.key+'|'+cid]||0;rowTotal+=v;
+        cellsHtml+=`<td style="text-align:right;padding:4px 8px;${v===0?'color:#ddd':''}">${v||'-'}</td>`;
+      });
+      // メモ用: このフレーバー×容量の代表商品(現役ロット優先=賞味期限が最も新しい)
+      const prodCandidates=plProductsFor(pk.flavor,pk.vol).sort((a,b)=>(b.exp||'').localeCompare(a.exp||''));
+      const repId=prodCandidates.length?prodCandidates[0].id:pk.key;
+      const memo=window.plannerMemos[repId]||{qty:'',note:''};
+      html+=`<tr>
+        <td style="text-align:left;position:sticky;left:0;background:#fff;white-space:nowrap">${plProdLabel(pk.flavor,pk.vol)}</td>
+        ${cellsHtml}
+        <td style="text-align:right;background:#f5f3ee;font-weight:600">${rowTotal}</td>
+        <td style="text-align:right;background:#f8fcf8">
+          <input type="number" min="0" value="${memo.qty!==''&&memo.qty!=null?memo.qty:''}" data-repid="${repId}" class="pl-memo-qty" placeholder="—" style="width:64px;padding:3px 6px;text-align:right;border:1px solid #ccd;border-radius:4px">
+        </td>
+        <td style="background:#f8fcf8">
+          <input type="text" value="${(memo.note||'').replace(/"/g,'&quot;')}" data-repid="${repId}" class="pl-memo-note" placeholder="メモ" style="width:110px;padding:3px 6px;border:1px solid #ccd;border-radius:4px;font-size:11px">
+        </td>
+      </tr>`;
+    });
+    // 列合計
+    html+='<tr style="font-weight:600;border-top:2px solid #e0ddd6"><td style="position:sticky;left:0;background:#fff">得意先合計</td>';
+    let grand=0;
+    custList.forEach(cid=>{html+=`<td style="text-align:right;padding:4px 8px">${custTotals[cid]}</td>`;grand+=custTotals[cid];});
+    html+=`<td style="text-align:right;background:#f5f3ee">${grand}</td><td style="background:#f0f6f0"></td><td style="background:#f0f6f0"></td></tr>`;
+    html+='</tbody>';
+  }else{
+    // 行=得意先、列=商品(8種)
+    html='<thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff;white-space:nowrap;min-width:140px">得意先＼商品</th>';
+    prodKeys.forEach(pk=>{
+      html+=`<th style="text-align:right;white-space:nowrap;padding:4px 6px;font-size:10px">${plProdLabel(pk.flavor,pk.vol)}</th>`;
+    });
+    html+='<th style="text-align:right;background:#f5f3ee;white-space:nowrap">合計</th></tr></thead><tbody>';
+    custList.forEach(cid=>{
+      const c=customers.find(x=>x.id===cid);
+      let rowTotal=0;let cellsHtml='';
+      prodKeys.forEach(pk=>{
+        const v=cell[pk.key+'|'+cid]||0;rowTotal+=v;
+        cellsHtml+=`<td style="text-align:right;padding:4px 6px;${v===0?'color:#ddd':''}">${v||'-'}</td>`;
+      });
+      html+=`<tr>
+        <td style="text-align:left;position:sticky;left:0;background:#fff;white-space:nowrap">${c?c.name:cid}</td>
+        ${cellsHtml}
+        <td style="text-align:right;background:#f5f3ee;font-weight:600">${rowTotal}</td>
+      </tr>`;
+    });
+    // 列合計(商品ごと)+次回製造数入力行
+    html+='<tr style="font-weight:600;border-top:2px solid #e0ddd6"><td style="position:sticky;left:0;background:#fff">商品合計</td>';
+    prodKeys.forEach(pk=>{
+      let t=0;custList.forEach(cid=>{t+=(cell[pk.key+'|'+cid]||0);});
+      html+=`<td style="text-align:right;padding:4px 6px">${t}</td>`;
+    });
+    html+='<td style="text-align:right;background:#f5f3ee"></td></tr>';
+    // 次回製造数の入力行
+    html+='<tr style="background:#f8fcf8"><td style="position:sticky;left:0;background:#f8fcf8;font-weight:600;color:#3B6D11">次回製造数</td>';
+    prodKeys.forEach(pk=>{
+      const prodCandidates=plProductsFor(pk.flavor,pk.vol).sort((a,b)=>(b.exp||'').localeCompare(a.exp||''));
+      const repId=prodCandidates.length?prodCandidates[0].id:pk.key;
+      const memo=window.plannerMemos[repId]||{qty:'',note:''};
+      html+=`<td style="padding:3px"><input type="number" min="0" value="${memo.qty!==''&&memo.qty!=null?memo.qty:''}" data-repid="${repId}" class="pl-memo-qty" placeholder="—" style="width:56px;padding:3px 4px;text-align:right;border:1px solid #ccd;border-radius:4px"></td>`;
+    });
+    html+='<td style="background:#f5f3ee"></td></tr>';
+    html+='</tbody>';
+  }
+  document.getElementById('planner-table').innerHTML=html;
+  // 保存ボタンの有効/無効
+  const saveBtn=document.getElementById('pl-save-btn');
+  const statusEl=document.getElementById('pl-save-status');
+  if(window.plannerMemosAvailable===false){
+    saveBtn.disabled=true;saveBtn.style.background='#bbb';saveBtn.style.cursor='not-allowed';
+    statusEl.innerHTML='⚠ 保存機能はまだ使えません(production_memos テーブルが必要です)。数字の入力・閲覧はできますが、ページを離れると消えます。';
+  }else{
+    saveBtn.disabled=false;saveBtn.style.background='#3B6D11';saveBtn.style.cursor='pointer';
+  }
+}
+
+async function savePlannerMemos(){
+  if(window.plannerMemosAvailable===false){
+    alert('保存機能を使うには、Supabaseに production_memos テーブルを作る必要があります。一緒に作りましょう。');
+    return;
+  }
+  // 入力値を集める
+  const memoMap={};
+  document.querySelectorAll('.pl-memo-qty').forEach(el=>{
+    const rid=el.dataset.repid;
+    if(!memoMap[rid])memoMap[rid]={};
+    memoMap[rid].qty=el.value===''?null:Number(el.value);
+  });
+  document.querySelectorAll('.pl-memo-note').forEach(el=>{
+    const rid=el.dataset.repid;
+    if(!memoMap[rid])memoMap[rid]={};
+    memoMap[rid].note=el.value||'';
+  });
+  const statusEl=document.getElementById('pl-save-status');
+  statusEl.textContent='保存中...';
+  try{
+    const rows=[];
+    for(const[rid,m]of Object.entries(memoMap)){
+      // qtyがnullでnoteも空ならスキップ(何も入力してない)
+      if((m.qty===null||m.qty===undefined)&&(!m.note||m.note==='')) continue;
+      rows.push({product_id:rid,qty:m.qty||0,note:m.note||'',updated_at:new Date().toISOString()});
+    }
+    if(rows.length===0){statusEl.textContent='保存する内容がありません';return;}
+    const{error}=await sb.from('production_memos').upsert(rows,{onConflict:'product_id'});
+    if(error)throw error;
+    // ローカルにも反映
+    rows.forEach(r=>{window.plannerMemos[r.product_id]={qty:r.qty,note:r.note};});
+    const now=new Date();
+    statusEl.innerHTML=`✅ 保存しました (${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')})`;
+  }catch(e){
+    statusEl.innerHTML=`<span style="color:#A32D2D">保存エラー: ${e.message}</span>`;
+  }
+}
+
 // ===== 委託管理 =====
 window.consignStocks=[]; // {customer_id, product_id, qty}
 window.consignSettlements=[]; // {id, customer_id, year_month, amount, note}
@@ -2481,10 +2766,11 @@ function showPage(id,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');el.classList.add('active');
-  const t={dashboard:'ダッシュボード',customers:'得意先管理',products:'製品マスタ',inventory:'在庫管理',orders:'受注管理',sales:'売上管理',plan:'製造計画',stocktake:'棚卸し',consign:'委託管理'};
+  const t={dashboard:'ダッシュボード',customers:'得意先管理',products:'製品マスタ',inventory:'在庫管理',orders:'受注管理',sales:'売上管理',plan:'製造計画',planner:'製造数プランナー',stocktake:'棚卸し',consign:'委託管理'};
   document.getElementById('page-title').textContent=t[id];
   if(id==='sales')renderSalesMonthly();
   if(id==='plan')initPlan();
+  if(id==='planner')initPlanner();
   if(id==='stocktake')initStocktake();
   if(id==='consign')initConsign();
 }
