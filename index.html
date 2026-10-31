@@ -424,6 +424,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
           <button onclick="openConsignSettleModal()" style="background:#A85B0B;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:13px;cursor:pointer;font-weight:600">💰 月締売上を記録</button>
         </div>
       </div>
+      <div id="consign-expiry-alert"></div>
       <div class="card">
         <div class="card-header"><span class="card-title">📋 委託先一覧</span></div>
         <div id="consign-customer-list"></div>
@@ -492,6 +493,13 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
     <div class="modal-header"><span class="modal-title">📋 現物確認(預け在庫の調整)</span><button class="close-btn" onclick="closeModal('consign-check')">×</button></div>
     <div style="font-size:12px;color:#666;margin-bottom:12px">委託先の棚で実際に残っている数を入力すると、預け在庫を実数に合わせます。</div>
     <div id="cs-check-body"></div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-consign-return">
+  <div class="modal" style="width:620px">
+    <div class="modal-header"><span class="modal-title">⬅ 委託先戻りを記録</span><button class="close-btn" onclick="closeModal('consign-return')">×</button></div>
+    <div style="font-size:12px;color:#666;margin-bottom:12px">委託先から返ってきた商品を記録します。預け在庫が減り、<b>自社在庫に戻ります</b>。</div>
+    <div id="cs-return-body"></div>
   </div>
 </div>
 <div class="modal-overlay" id="modal-customer-detail">
@@ -1251,6 +1259,67 @@ async function setOrderStatus(orderId,status){
   }
 }
 
+// ===== 発送日の変更 =====
+function shipDateCellHtml(o){
+  const d=o.delivery_date||'';
+  return `<span id="shipdate-${o.id}" style="color:#185FA5;cursor:pointer;border-bottom:1px dotted #a9c6e4" onclick="editShipDate('${o.id}')" title="クリックで発送日を変更">${d||'未設定'}</span>`;
+}
+
+function editShipDate(orderId){
+  const o=orders.find(x=>x.id===orderId);
+  if(!o)return;
+  const span=document.getElementById('shipdate-'+orderId);
+  if(!span||span.dataset.editing)return;
+  span.dataset.editing='1';
+  const input=document.createElement('input');
+  input.type='date';
+  input.value=o.delivery_date||'';
+  input.style.cssText='padding:2px 4px;border:1px solid #185FA5;border-radius:4px;font-size:11px;width:120px';
+  let done=false;
+  const finish=async(save)=>{
+    if(done)return;done=true;
+    const v=input.value||null;
+    if(save&&v!==(o.delivery_date||null)){
+      await saveShipDate(orderId,v);
+    }
+    renderOrders();
+  };
+  input.onchange=()=>finish(true);
+  input.onblur=()=>finish(true);
+  input.onkeydown=(e)=>{if(e.key==='Escape')finish(false);if(e.key==='Enter')input.blur();};
+  span.replaceWith(input);
+  input.focus();
+  if(input.showPicker)try{input.showPicker();}catch(e){}
+}
+
+async function changeShipDateFromModal(orderId,value){
+  await saveShipDate(orderId,value||null);
+  renderOrders();
+  openOrderDetail(orderId);
+}
+
+async function saveShipDate(orderId,newDate){
+  const o=orders.find(x=>x.id===orderId);
+  if(!o)return;
+  // 同じ注文グループの他の明細
+  const siblings=o.order_group_id?orders.filter(x=>x.order_group_id===o.order_group_id&&x.id!==orderId):[];
+  let targets=[o];
+  if(siblings.length>0){
+    const label=newDate||'未設定';
+    if(confirm(`同じ注文の他の ${siblings.length}件 も発送日を ${label} に変更しますか?\n\nOK = まとめて変更\nキャンセル = この1件だけ変更`)){
+      targets=targets.concat(siblings);
+    }
+  }
+  try{
+    const ids=targets.map(x=>x.id);
+    const{error}=await sb.from('orders').update({delivery_date:newDate}).in('id',ids);
+    if(error)throw error;
+    targets.forEach(x=>{x.delivery_date=newDate;});
+  }catch(e){
+    alert('発送日を更新できませんでした: '+e.message);
+  }
+}
+
 function renderOrders(){
   const fc=document.getElementById('ord-cust-filter').value;
   const fm=document.getElementById('ord-month-filter').value;
@@ -1326,7 +1395,7 @@ function renderOrders(){
       <td style="text-align:right;font-size:10px;color:${marginColor}">${marginRate!==null?marginRate+'%':'-'}</td>
       <td>${statusBadgeHtml(o)}</td>
       <td style="color:#999">${o.date}</td>
-      <td style="color:#185FA5">${o.delivery_date||'-'}</td>
+      <td>${shipDateCellHtml(o)}</td>
       <td style="text-align:center"><button onclick="confirmDeleteOrder('${o.id}')" style="background:none;border:none;color:#A32D2D;cursor:pointer;font-size:14px;padding:2px 6px" title="削除">🗑</button></td>
     </tr>`;
   }).join(''):`<tr><td colspan="11" class="empty-state">受注データがありません</td></tr>`;
@@ -2153,7 +2222,7 @@ function openOrderDetail(orderId){
       <div><b>受注番号:</b> ${o.id}${isHistorical?' <span style="background:#e8f0f7;color:#185FA5;font-size:9px;padding:1px 6px;border-radius:8px;margin-left:4px">過去取込</span>':''}</div>
       <div><b>受注日:</b> ${o.date}</div>
       <div><b>得意先:</b> ${cust?cust.name:'(未登録)'}</div>
-      <div><b>発送日:</b> ${o.delivery_date||'-'}</div>
+      <div><b>発送日:</b> <input type="date" value="${o.delivery_date||''}" onchange="changeShipDateFromModal('${o.id}',this.value)" style="padding:2px 5px;border:0.5px solid #ccc;border-radius:4px;font-size:11px"></div>
       <div><b>ステータス:</b> ${statusBadgeHtml(o)}</div>
       <div><b>発送完了日時:</b> ${o.shipped_at?new Date(o.shipped_at).toLocaleString('ja-JP'):'-'}</div>
       ${o.order_group_id?`<div style="grid-column:span 2"><b>注文グループ:</b> ${o.order_group_id} <span style="color:#888;font-size:10px">(同じ注文として登録された明細: ${sameGroup.length}件)</span></div>`:''}
@@ -2422,10 +2491,187 @@ async function initConsign(){
     const{data:cd}=await sb.from('customers').select('*');if(cd)customers=cd;
     const{data:pd}=await sb.from('products').select('*');if(pd)products=pd;
     await fetchConsignData();
+    renderExpiryAlert();
     renderConsignList();
   }catch(e){
     document.getElementById('consign-customer-list').innerHTML=`<div style="color:#A32D2D;padding:14px">エラー: ${e.message}</div>`;
   }
+}
+
+// ===== 賞味期限の残り月数とタグ =====
+function monthsUntilExp(exp){
+  if(!exp)return null;
+  const parts=String(exp).replace(/-/g,'/').split('/');
+  if(parts.length<3)return null;
+  const d=new Date(Number(parts[0]),Number(parts[1])-1,Number(parts[2]));
+  if(isNaN(d))return null;
+  const now=new Date();now.setHours(0,0,0,0);
+  return (d-now)/(1000*60*60*24*30.4375);
+}
+function expTag(exp){
+  const m=monthsUntilExp(exp);
+  if(m===null)return '';
+  if(m<0)return `<span class="badge bd" style="margin-left:5px">期限切れ ${exp}</span>`;
+  if(m<=2)return `<span class="badge bw" style="margin-left:5px">⚠ 期限まぢか ${exp}</span>`;
+  return `<span style="font-size:10px;color:#aaa;margin-left:5px">${exp}</span>`;
+}
+
+// ===== 賞味期限アラート(委託先＋自社) =====
+function renderExpiryAlert(){
+  const el=document.getElementById('consign-expiry-alert');
+  if(!el)return;
+  const rows=[];
+  // 委託先に預けているもの
+  consignStocks.forEach(s=>{
+    if(!s.qty||s.qty<=0)return;
+    const p=products.find(x=>x.id===s.product_id);
+    if(!p)return;
+    const m=monthsUntilExp(p.exp);
+    if(m===null||m>2)return;
+    const c=customers.find(x=>x.id===s.customer_id);
+    rows.push({where:c?c.name:s.customer_id,isConsign:true,p:p,qty:s.qty,m:m});
+  });
+  // 自社在庫
+  products.forEach(p=>{
+    if(!p.stock||p.stock<=0)return;
+    const m=monthsUntilExp(p.exp);
+    if(m===null||m>2)return;
+    rows.push({where:'自社在庫',isConsign:false,p:p,qty:p.stock,m:m});
+  });
+  if(rows.length===0){
+    el.innerHTML=`<div class="card" style="background:#f2f8f2;border-color:#bcd8bc"><div style="font-size:13px;color:#3B6D11">✅ 賞味期限が2ヶ月以内に迫っている在庫はありません</div></div>`;
+    return;
+  }
+  rows.sort((a,b)=>a.m-b.m);
+  const expired=rows.filter(r=>r.m<0).length;
+  let html=`<div class="card" style="background:#fff8ec;border-color:#e8cd9a">
+    <div class="card-header"><span class="card-title">⚠ 賞味期限アラート(2ヶ月以内)</span>
+      <span style="font-size:11px;color:#854F0B">${rows.length}件${expired?` / うち期限切れ ${expired}件`:''}</span>
+    </div>
+    <table style="font-size:11px;width:100%">
+      <thead><tr>
+        <th style="text-align:left">場所</th>
+        <th style="text-align:left">商品</th>
+        <th style="text-align:left">賞味期限</th>
+        <th style="text-align:right">残り</th>
+        <th style="text-align:right">数量</th>
+      </tr></thead><tbody>`;
+  rows.forEach(r=>{
+    const left=r.m<0?'期限切れ':(r.m<1?Math.max(0,Math.round(r.m*30.4375))+'日':r.m.toFixed(1)+'ヶ月');
+    const color=r.m<0?'#A32D2D':r.m<=1?'#A85B0B':'#854F0B';
+    html+=`<tr style="background:${r.m<0?'#fdf0f0':''}">
+      <td>${r.isConsign?'📦 ':'🏠 '}${r.where}</td>
+      <td>${fDot(r.p.flavor)} ${r.p.flavor.substring(0,4)} ${r.p.vol}ml ${r.p.pouch||''}</td>
+      <td>${r.p.exp||'-'}</td>
+      <td style="text-align:right;color:${color};font-weight:600">${left}</td>
+      <td style="text-align:right">${r.qty}個</td>
+    </tr>`;
+  });
+  html+=`</tbody></table>
+    <div style="font-size:10px;color:#888;margin-top:8px">📦 = 委託先に預けている分 / 🏠 = 自社在庫。委託先の分は「⬅ 戻りを記録」で引き上げられます。</div>
+  </div>`;
+  el.innerHTML=html;
+}
+
+// ===== 委託先戻りの記録 =====
+function openConsignReturnModal(cid){
+  const cust=customers.find(c=>c.id===cid);
+  if(!cust)return;
+  const stocks=consignStocks.filter(s=>s.customer_id===cid&&s.qty>0);
+  const today=new Date();
+  const td=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  let html=`<div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font-size:13px;font-weight:600;background:#f5f3ee;padding:8px 12px;border-radius:6px">${cust.name}</div>
+    <label style="font-size:12px">返却日
+      <input type="date" id="cs-return-date" value="${td}" style="margin-left:8px;padding:4px 8px;border:1px solid #ccc;border-radius:6px">
+    </label>
+    <label style="font-size:12px">戻りの理由
+      <select id="cs-return-reason" style="margin-left:8px;padding:5px 10px;border:1px solid #ccc;border-radius:6px">
+        <option value="期限が近いため返却">期限が近いため返却</option>
+        <option value="売れ残りのため返却">売れ残りのため返却</option>
+        <option value="取引終了のため返却">取引終了のため返却</option>
+        <option value="その他">その他</option>
+      </select>
+    </label>
+    <div style="margin-top:6px;font-size:12px;color:#888">返ってきた数を入力してください。空欄は0として扱います。</div>
+    <div style="max-height:340px;overflow-y:auto;border:1px solid #e0ddd6;border-radius:6px;padding:8px">`;
+  if(stocks.length===0){
+    html+=`<div style="color:#bbb;padding:20px;text-align:center">この委託先には預け在庫がありません</div>`;
+  }else{
+    stocks.sort((a,b)=>{
+      const pa=products.find(x=>x.id===a.product_id),pb=products.find(x=>x.id===b.product_id);
+      return ((pa&&pa.exp)||'').localeCompare((pb&&pb.exp)||'');
+    });
+    stocks.forEach(s=>{
+      const p=products.find(x=>x.id===s.product_id);
+      const label=p?`${fDot(p.flavor)} ${p.flavor.substring(0,4)} ${p.vol}ml ${p.pouch||''}`:s.product_id;
+      html+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 4px;border-bottom:1px solid #f0eee8;font-size:12px">
+        <div>${label} ${expTag(p?p.exp:null)} <span style="color:#888;font-size:10px">(預け${s.qty})</span></div>
+        <input type="number" min="0" max="${s.qty}" placeholder="0" data-pid="${s.product_id}" data-max="${s.qty}" class="cs-return-qty" style="width:80px;padding:3px 6px;text-align:right;border:1px solid #ccc;border-radius:4px">
+      </div>`;
+    });
+  }
+  html+=`</div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px">
+      <button onclick="closeModal('consign-return')" style="background:#eee;border:none;border-radius:6px;padding:8px 16px;cursor:pointer">キャンセル</button>
+      <button onclick="execConsignReturn('${cid}')" style="background:#854F0B;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:600">戻りを記録</button>
+    </div>
+  </div>`;
+  document.getElementById('cs-return-body').innerHTML=html;
+  openModal('consign-return');
+}
+
+async function execConsignReturn(cid){
+  const date=document.getElementById('cs-return-date').value;
+  const reason=document.getElementById('cs-return-reason').value;
+  if(!date){alert('返却日を入力してください');return;}
+  const cust=customers.find(c=>c.id===cid);
+  const items=[];
+  let bad=null;
+  document.querySelectorAll('.cs-return-qty').forEach(el=>{
+    const q=Number(el.value);
+    if(!q||q<=0)return;
+    const max=Number(el.dataset.max);
+    if(q>max){bad=el.dataset.pid;return;}
+    items.push({pid:el.dataset.pid,qty:q,max:max});
+  });
+  if(bad){alert('預けている数より多い数は入力できません');return;}
+  if(items.length===0){alert('戻ってきた数を入力してください');return;}
+
+  let msg=`【${cust.name}】から以下が戻ってきたと記録します:\n\n`;
+  items.forEach(it=>{
+    const p=products.find(x=>x.id===it.pid);
+    msg+=`・${p?p.flavor+' '+p.vol+'ml '+(p.pouch||''):it.pid}: ${it.qty}個\n`;
+  });
+  msg+=`\n返却日: ${date}\n理由: ${reason}\n\n自社在庫に戻ります。実行しますか?`;
+  if(!confirm(msg))return;
+
+  try{
+    for(const it of items){
+      // 預け在庫を減らす
+      const existing=consignStocks.find(s=>s.customer_id===cid&&s.product_id===it.pid);
+      const newQty=Math.max(0,(existing?existing.qty:0)-it.qty);
+      const{error:e1}=await sb.from('consign_stocks').update({qty:newQty}).eq('customer_id',cid).eq('product_id',it.pid);
+      if(e1)throw new Error('委託在庫更新: '+e1.message);
+      // 自社在庫を増やす
+      const p=products.find(x=>x.id===it.pid);
+      const newStock=(p?(p.stock||0):0)+it.qty;
+      const{error:e2}=await sb.from('products').update({stock:newStock}).eq('id',it.pid);
+      if(e2)throw new Error('在庫更新: '+e2.message);
+      // 在庫ログ
+      const{error:e3}=await sb.from('stock_logs').insert({
+        product_id:it.pid,type:'add',qty:it.qty,
+        note:`委託返却(${cust.name}) ${reason} [CONSIGN-RETURN:${cid}]`,
+        created_at:date+'T00:00:00+09:00'
+      });
+      if(e3)throw new Error('在庫ログ: '+e3.message);
+    }
+    alert('✅ 委託先戻りを記録しました');
+    closeModal('consign-return');
+    await initConsign();
+    const{data:pd}=await sb.from('products').select('*');if(pd)products=pd;
+    renderProductTable();renderInventory();renderDashboard();
+  }catch(e){alert('❌ '+e.message);}
 }
 
 function renderConsignList(){
@@ -2456,6 +2702,7 @@ function renderConsignList(){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div style="font-size:14px;font-weight:600">${c.name}<span style="font-size:10px;color:#888;font-weight:400;margin-left:8px">${c.trade_type||''}</span></div>
         <div style="display:flex;gap:8px">
+          <button onclick="openConsignReturnModal('${c.id}')" style="background:#854F0B;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;cursor:pointer">⬅ 戻りを記録</button>
           <button onclick="openConsignCheckModal('${c.id}')" style="background:#185FA5;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;cursor:pointer">📋 現物確認</button>
         </div>
       </div>
@@ -2470,7 +2717,7 @@ function renderConsignList(){
         const p=products.find(x=>x.id===s.product_id);
         const label=p?`${fDot(p.flavor)} ${p.flavor.substring(0,4)} ${p.vol}ml ${p.pouch||''}`:s.product_id;
         html+=`<div style="display:flex;justify-content:space-between;padding:2px 0">
-          <span>${label}</span><span style="font-weight:500">${s.qty}個</span>
+          <span>${label} ${expTag(p?p.exp:null)}</span><span style="font-weight:500">${s.qty}個</span>
         </div>`;
       });
     }
