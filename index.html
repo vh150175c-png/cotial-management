@@ -232,7 +232,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#185FA5;box-sh
             <button class="btn btn-primary" onclick="openAdjustModal()">在庫調整</button>
           </div>
         </div>
-        <table><thead><tr><th>商品ID</th><th>フレーバー</th><th>容量</th><th>パウチ</th><th>製造場所</th><th>現在庫</th><th>賞味期限</th><th>状況</th></tr></thead>
+        <table><thead><tr id="inv-head"></tr></thead>
         <tbody id="inv-table"></tbody></table>
         <div id="inv-hidden-msg" style="padding:10px;font-size:11px;color:#888;text-align:center"></div>
       </div>
@@ -1145,10 +1145,63 @@ async function doDeleteOrder(id){
     showToast('❌ 削除エラー: '+e.message);
   }
 }
+// ===== 在庫一覧の並べ替え =====
+// 初期表示は「賞味期限が近い順」
+window.invSort={key:'exp',asc:true};
+
+const INV_COLS=[
+  {key:'id',    label:'商品ID'},
+  {key:'flavor',label:'フレーバー'},
+  {key:'vol',   label:'容量'},
+  {key:'pouch', label:'パウチ'},
+  {key:'maker', label:'製造場所'},
+  {key:'stock', label:'現在庫', right:true},
+  {key:'exp',   label:'賞味期限'},
+  {key:null,    label:'状況'}
+];
+
+function sortInventory(key){
+  if(window.invSort.key===key){
+    window.invSort.asc=!window.invSort.asc;
+  }else{
+    window.invSort={key:key,asc:true};
+  }
+  renderInventory();
+}
+
+function invSortValue(p,key){
+  if(key==='stock')return p.stock||0;
+  if(key==='vol')return Number(p.vol)||0;
+  if(key==='exp')return p.exp?String(p.exp).replace(/\//g,'-'):'9999-99-99'; // 期限なしは最後
+  return String(p[key]||'');
+}
+
 function renderInventory(){
   const showZero=document.getElementById('inv-show-zero')&&document.getElementById('inv-show-zero').checked;
   const visible=products.filter(p=>showZero||(p.stock||0)>0);
   const hidden=products.length-visible.length;
+
+  // 見出し(クリックで並べ替え)
+  const headEl=document.getElementById('inv-head');
+  if(headEl){
+    headEl.innerHTML=INV_COLS.map(c=>{
+      if(!c.key)return `<th>${c.label}</th>`;
+      const on=window.invSort.key===c.key;
+      const arrow=on?(window.invSort.asc?' ▲':' ▼'):'';
+      return `<th style="cursor:pointer;user-select:none;${on?'color:#185FA5':''}${c.right?';text-align:right':''}" onclick="sortInventory('${c.key}')" title="クリックで並べ替え">${c.label}${arrow}</th>`;
+    }).join('');
+  }
+
+  // 並べ替え
+  const s=window.invSort;
+  visible.sort((a,b)=>{
+    const va=invSortValue(a,s.key),vb=invSortValue(b,s.key);
+    let r;
+    if(typeof va==='number')r=va-vb;
+    else r=String(va).localeCompare(String(vb),'ja');
+    if(r===0)r=String(a.id).localeCompare(String(b.id));
+    return s.asc?r:-r;
+  });
   document.getElementById('inv-table').innerHTML=visible.map(p=>{const pct=Math.min(Math.round((p.stock||0)/Math.max(p.stock||0,200)*100),100);const color=(p.stock||0)<0?'#A32D2D':(p.stock||0)===0?'#E24B4A':(p.stock||0)<20?'#BA7517':'#185FA5';return`<tr><td style="font-size:10px;color:#999;white-space:nowrap">${p.id}</td><td>${fDot(p.flavor)} ${p.flavor}</td><td>${p.vol}ml</td><td><span class="badge bg">${p.pouch}</span></td><td style="font-size:10px;color:#999">${(p.maker||'').replace('株式会社','(株)').replace('センター','C.')}</td><td style="text-align:right;font-weight:500;${(p.stock||0)<=0?'color:#A32D2D':''}">${p.stock||0}</td><td class="${expStatus(p.exp)==='past'?'expiry-past':expStatus(p.exp)==='soon'?'expiry-warn':'expiry-ok'}">${p.exp||'-'}</td><td><div style="display:flex;align-items:center;gap:6px"><div class="progress" style="flex:1"><div class="progress-bar" style="width:${pct}%;background:${color}"></div></div>${stockBadge(p.stock||0)}</div></td></tr>`;}).join('');
   const msgEl=document.getElementById('inv-hidden-msg');
   if(msgEl)msgEl.innerHTML=hidden>0?`在庫0/マイナスの商品 ${hidden}件を非表示中　<a href="#" onclick="document.getElementById('inv-show-zero').checked=true;renderInventory();return false" style="color:#185FA5">→ 表示する</a>`:'';
